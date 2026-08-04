@@ -1,0 +1,17 @@
+# Ignorar los entornos virtuales de Python
+backend/venv/
+frontend/node_modules/
+
+# Ignorar archivos compilados en caché.
+backend/__pycache__/
+*.pyc
+
+# Ignorar variables de entorno (¡Muy importante para proteger conexiones a bases de datos o APIs!)
+backend/.env
+
+# Ignorar todos los archivos de registro (logs).
+*.log
+
+# Ignorar todos los archivos de texto, EXCEPTO uno específico
+*.txt
+!requirements.txt
