@@ -65,9 +65,63 @@ class PersonaOut(BaseModel):
     nombre_completo: str
 
 
+class PersonaUpdate(BaseModel):
+    nombre_completo: str = Field(..., min_length=1, description="Nombre completo de la persona")
+
+    @field_validator("nombre_completo")
+    @classmethod
+    def nombre_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("El nombre completo no puede estar vacio")
+        return value
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/personas", response_model=list[PersonaOut])
+def listar_personas() -> list[dict]:
+    try:
+        response = (
+            supabase.table("personas")
+            .select("cedula, nombre_completo")
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los registros.",
+        ) from exc
+
+    return response.data or []
+
+
+@app.put("/api/personas/{cedula}", response_model=PersonaOut)
+def actualizar_persona(cedula: str, persona: PersonaUpdate) -> PersonaOut:
+    try:
+        response = (
+            supabase.table("personas")
+            .update({"nombre_completo": persona.nombre_completo})
+            .eq("cedula", cedula)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al actualizar el registro.",
+        ) from exc
+
+    if not response.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro un registro con esa cedula.",
+        )
+
+    return response.data[0]
 
 
 @app.post("/api/personas", response_model=PersonaOut, status_code=status.HTTP_201_CREATED)
