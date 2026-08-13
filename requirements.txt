@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30.0
 supabase>=2.5.0
 python-dotenv>=1.0.1
 pydantic>=2.7.0
+email-validator>=2.1.0

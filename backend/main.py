@@ -1,14 +1,15 @@
 """
-Backend FastAPI para el formulario de registro de personas.
-Unico responsable de hablar con Supabase (el frontend no lo hace directo).
+Backend FastAPI: autenticacion, roles y alta de usuarios.
+Unico responsable de hablar con Supabase con la service_role key.
 """
 
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, field_validator
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from supabase import Client, create_client
 
 load_dotenv()
@@ -24,7 +25,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-app = FastAPI(title="API Registro de Personas")
+app = FastAPI(title="API Gestion de Usuarios")
 
 # En desarrollo se permite el origen del frontend (Vite -> localhost:5173).
 # En produccion, restringir a la URL real del frontend.
@@ -38,18 +39,82 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+bearer_scheme = HTTPBearer(auto_error=True)
 
-class PersonaCreate(BaseModel):
-    cedula: str = Field(..., description="Numero de cedula, solo digitos")
-    nombre_completo: str = Field(..., min_length=1, description="Nombre completo de la persona")
 
-    @field_validator("cedula")
-    @classmethod
-    def cedula_solo_numeros(cls, value: str) -> str:
-        value = value.strip()
-        if not value.isdigit():
-            raise ValueError("La cedula debe contener solo numeros")
-        return value
+# ---------------------------------------------------------------
+# Autenticacion / autorizacion
+# ---------------------------------------------------------------
+
+
+class UsuarioActual(BaseModel):
+    id: str
+    email: str | None
+    role: str
+
+
+def get_usuario_actual(
+    credenciales: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> UsuarioActual:
+    """Valida el JWT (access token de Supabase Auth) enviado en el header
+    Authorization: Bearer <token> y obtiene el rol del usuario desde
+    public.profiles."""
+    token = credenciales.credentials
+
+    try:
+        respuesta_auth = supabase.auth.get_user(token)
+        usuario = respuesta_auth.user if respuesta_auth else None
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token invalido o expirado.",
+        ) from exc
+
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token invalido o expirado.",
+        )
+
+    try:
+        perfil = (
+            supabase.table("profiles")
+            .select("role")
+            .eq("id", usuario.id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El usuario no tiene un perfil asociado.",
+        ) from exc
+
+    return UsuarioActual(id=usuario.id, email=usuario.email, role=perfil.data["role"])
+
+
+def requerir_administrador(
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> UsuarioActual:
+    if usuario.role != "administrador":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un administrador puede realizar esta accion.",
+        )
+    return usuario
+
+
+# ---------------------------------------------------------------
+# Modelos
+# ---------------------------------------------------------------
+
+
+class LiderCuadrillaCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(
+        ..., min_length=8, description="Contrasena temporal para el nuevo usuario"
+    )
+    nombre_completo: str = Field(..., min_length=1)
 
     @field_validator("nombre_completo")
     @classmethod
@@ -60,21 +125,16 @@ class PersonaCreate(BaseModel):
         return value
 
 
-class PersonaOut(BaseModel):
-    cedula: str
+class UsuarioOut(BaseModel):
+    id: str
+    email: str
     nombre_completo: str
+    role: str
 
 
-class PersonaUpdate(BaseModel):
-    nombre_completo: str = Field(..., min_length=1, description="Nombre completo de la persona")
-
-    @field_validator("nombre_completo")
-    @classmethod
-    def nombre_no_vacio(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("El nombre completo no puede estar vacio")
-        return value
+# ---------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------
 
 
 @app.get("/api/health")
@@ -82,73 +142,53 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/api/personas", response_model=list[PersonaOut])
-def listar_personas() -> list[dict]:
+@app.post(
+    "/api/admin/lideres",
+    response_model=UsuarioOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_lider_cuadrilla(
+    payload: LiderCuadrillaCreate,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    """Crea un usuario con rol lider_cuadrilla en Supabase Auth.
+
+    Usa supabase.auth.admin (service_role key) para dar de alta al usuario,
+    por lo que la sesion del administrador que hace la peticion (su propio
+    access token, validado arriba) no se ve afectada en ningun momento.
+    """
     try:
-        response = (
-            supabase.table("personas")
-            .select("cedula, nombre_completo")
-            .order("created_at", desc=True)
-            .execute()
+        creado = supabase.auth.admin.create_user(
+            {
+                "email": payload.email,
+                "password": payload.password,
+                "email_confirm": True,
+                "user_metadata": {"nombre_completo": payload.nombre_completo},
+                "app_metadata": {"role": "lider_cuadrilla"},
+            }
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener los registros.",
-        ) from exc
-
-    return response.data or []
-
-
-@app.put("/api/personas/{cedula}", response_model=PersonaOut)
-def actualizar_persona(cedula: str, persona: PersonaUpdate) -> PersonaOut:
-    try:
-        response = (
-            supabase.table("personas")
-            .update({"nombre_completo": persona.nombre_completo})
-            .eq("cedula", cedula)
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al actualizar el registro.",
-        ) from exc
-
-    if not response.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontro un registro con esa cedula.",
-        )
-
-    return response.data[0]
-
-
-@app.post("/api/personas", response_model=PersonaOut, status_code=status.HTTP_201_CREATED)
-def crear_persona(persona: PersonaCreate) -> PersonaOut:
-    try:
-        response = (
-            supabase.table("personas")
-            .insert({"cedula": persona.cedula, "nombre_completo": persona.nombre_completo})
-            .execute()
-        )
-    except Exception as exc:  # supabase-py lanza excepciones de postgrest
-        mensaje = str(exc)
-        # Codigo 23505 = violacion de llave unica/primaria en PostgreSQL
-        if "23505" in mensaje or "duplicate key" in mensaje.lower():
+        mensaje = str(exc).lower()
+        if "already" in mensaje or "duplicate" in mensaje or "exists" in mensaje:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe un registro con esa cedula.",
+                detail="Ya existe un usuario registrado con ese correo.",
             ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al guardar el registro.",
+            detail="Error interno al crear el usuario.",
         ) from exc
 
-    if not response.data:
+    nuevo_usuario = creado.user if creado else None
+    if not nuevo_usuario:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudo confirmar el guardado del registro.",
+            detail="No se pudo confirmar la creacion del usuario.",
         )
 
-    return response.data[0]
+    return {
+        "id": nuevo_usuario.id,
+        "email": nuevo_usuario.email,
+        "nombre_completo": payload.nombre_completo,
+        "role": "lider_cuadrilla",
+    }
