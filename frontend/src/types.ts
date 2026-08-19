@@ -14,3 +14,15 @@ export type Usuario = {
   role: Rol;
   activo: boolean;
 };
+
+export type EstadoTrabajo = "pendiente" | "en_progreso" | "completado";
+
+export type Trabajo = {
+  id: string;
+  titulo: string;
+  descripcion: string | null;
+  estado: EstadoTrabajo;
+  lider_id: string;
+  lider_nombre: string | null;
+  lider_email: string | null;
+};

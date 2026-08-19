@@ -90,7 +90,53 @@ alter table public.profiles enable row level security;
 --   using (id = auth.uid());
 
 -- ---------------------------------------------------------
--- 4. Bootstrap del primer administrador (ejecutar una sola vez)
+-- 4. Tabla trabajos (asignacion de trabajos a lideres de cuadrilla)
+-- ---------------------------------------------------------
+-- Campos minimos por ahora (titulo, descripcion, estado); se amplia mas
+-- adelante cuando se definan los campos finales de cada trabajo.
+
+create table if not exists public.trabajos (
+  id uuid primary key default gen_random_uuid(),
+  titulo text not null check (length(trim(titulo)) > 0),
+  descripcion text,
+  estado text not null default 'pendiente'
+    check (estado in ('pendiente', 'en_progreso', 'completado')),
+  lider_id uuid not null references public.profiles (id) on delete cascade,
+  asignado_por uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.trabajos is 'Trabajos asignados por un administrador a un lider_cuadrilla.';
+comment on column public.trabajos.lider_id is 'profiles.id del lider_cuadrilla responsable del trabajo.';
+comment on column public.trabajos.asignado_por is 'profiles.id del administrador que creo/asigno el trabajo.';
+
+create index if not exists idx_trabajos_lider_id on public.trabajos (lider_id);
+
+-- Misma logica de RLS que profiles: bloqueo total, solo el backend
+-- (service_role) lee/escribe esta tabla.
+alter table public.trabajos enable row level security;
+
+-- Mantiene updated_at al dia en cada UPDATE, sin que el backend tenga
+-- que mandarlo explicitamente.
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_trabajos_updated_at on public.trabajos;
+
+create trigger set_trabajos_updated_at
+  before update on public.trabajos
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------
+-- 5. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------
 -- No hay registro publico, asi que el primer administrador se crea a
 -- mano desde el Supabase Dashboard > Authentication > Users > Add user.

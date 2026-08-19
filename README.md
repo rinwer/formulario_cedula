@@ -22,7 +22,8 @@ formulario-cedula/
     ├── src/App.tsx                     Login + shell con pestanas segun rol
     ├── src/lib/supabaseClient.ts       Cliente Supabase (anon key, solo Auth)
     ├── src/components/LoginPage.tsx
-    ├── src/components/PerfilesPanel.tsx  Pestana "Perfiles" (crear/listar lideres)
+    ├── src/components/PerfilesPanel.tsx    Pestana "Perfiles" (crear/listar/editar lideres)
+    ├── src/components/AsignacionPanel.tsx  Pestana "Asignacion" (trabajos por lider)
     └── .env.example
 ```
 
@@ -93,6 +94,22 @@ Respuestas: `201` con el usuario creado, `401` sin token o token invalido,
   si mismo el rol de administrador ni deshabilitar su propia cuenta
   (evita quedar bloqueado sin ningun admin activo).
 
+### Endpoints de trabajos (pestana "Asignacion")
+
+Todos requieren `Authorization: Bearer <access_token>` de un administrador.
+
+- `GET /api/admin/trabajos`: lista todos los trabajos con el nombre/correo
+  del lider asignado (via embedding de PostgREST sobre la FK
+  `trabajos.lider_id -> profiles.id`).
+- `POST /api/admin/trabajos`: crea un trabajo (`titulo`, `descripcion`
+  opcional, `lider_id`, `estado` inicial `pendiente`). Valida que
+  `lider_id` exista y tenga rol `lider_cuadrilla` (400 si no).
+- `PUT /api/admin/trabajos/{id}`: actualiza titulo, descripcion, lider
+  asignado y estado (`pendiente` | `en_progreso` | `completado`).
+
+Los campos de `trabajos` son minimos por ahora (titulo, descripcion,
+estado); se amplian cuando se definan los campos finales de cada trabajo.
+
 ## 3. Frontend
 
 ```bash
@@ -121,18 +138,21 @@ npm run dev
 Abre `http://localhost:5173`:
 
 1. Pantalla de **login** (correo + contrasena).
-2. Si el usuario logueado es `administrador`, aparece en la barra superior
-   la pestana **Perfiles**: formulario para crear un `lider_cuadrilla`
-   (nombre, correo, contrasena temporal) y tabla con todos los usuarios
-   existentes. Cada uno tiene boton **Editar** para cambiar nombre,
-   correo, contrasena (opcional, se deja en blanco para no cambiarla),
-   rol, y un check **Habilitado** para permitir o bloquear su login.
+2. Si el usuario logueado es `administrador`, aparece en la barra superior:
+   - Pestana **Perfiles**: formulario para crear un `lider_cuadrilla`
+     (nombre, correo, contrasena temporal) y tabla con todos los usuarios
+     existentes. Cada uno tiene boton **Editar** para cambiar nombre,
+     correo, contrasena (opcional, se deja en blanco para no cambiarla),
+     rol, y un check **Habilitado** para permitir o bloquear su login.
+   - Pestana **Asignacion**: formulario para crear un trabajo (titulo,
+     descripcion, lider de cuadrilla) y tabla con todos los trabajos
+     asignados, cada uno editable (titulo, descripcion, lider, estado).
 3. Si es `lider_cuadrilla`, ve una pantalla de bienvenida simple (su panel
-   propio se construye en un paso siguiente).
+   propio, con sus trabajos asignados, se construye en un paso siguiente).
 
 El access token de la sesion de Supabase se manda como
-`Authorization: Bearer` en cada llamada a `/api/me`, `/api/admin/usuarios`
-y `/api/admin/lideres`.
+`Authorization: Bearer` en cada llamada a `/api/me`, `/api/admin/usuarios`,
+`/api/admin/lideres` y `/api/admin/trabajos`.
 
 ## Notas de seguridad
 

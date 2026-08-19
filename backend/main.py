@@ -173,6 +173,78 @@ class PerfilUpdate(BaseModel):
         return value
 
 
+ESTADOS_TRABAJO = ("pendiente", "en_progreso", "completado")
+
+
+class TrabajoCreate(BaseModel):
+    titulo: str = Field(..., min_length=1)
+    descripcion: str | None = None
+    lider_id: str
+    estado: str = "pendiente"
+
+    @field_validator("titulo")
+    @classmethod
+    def titulo_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("El titulo no puede estar vacio")
+        return value
+
+    @field_validator("estado")
+    @classmethod
+    def estado_valido(cls, value: str) -> str:
+        if value not in ESTADOS_TRABAJO:
+            raise ValueError(f"El estado debe ser uno de: {', '.join(ESTADOS_TRABAJO)}")
+        return value
+
+
+class TrabajoUpdate(TrabajoCreate):
+    pass
+
+
+class TrabajoOut(BaseModel):
+    id: str
+    titulo: str
+    descripcion: str | None
+    estado: str
+    lider_id: str
+    lider_nombre: str | None = None
+    lider_email: str | None = None
+
+
+def obtener_perfil_lider(lider_id: str) -> dict:
+    """Valida que lider_id exista y tenga rol lider_cuadrilla; devuelve su
+    nombre/email para no tener que volver a consultarlos."""
+    try:
+        perfil = (
+            supabase.table("profiles")
+            .select("nombre_completo, email, role")
+            .eq("id", lider_id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro un lider de cuadrilla con ese id.",
+        ) from exc
+
+    if perfil.data["role"] != "lider_cuadrilla":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El trabajo solo se puede asignar a un usuario con rol lider_cuadrilla.",
+        )
+
+    return perfil.data
+
+
+def fila_trabajo_a_salida(fila: dict) -> dict:
+    lider = fila.pop("lider", None) or {}
+    fila["lider_nombre"] = lider.get("nombre_completo")
+    fila["lider_email"] = lider.get("email")
+    return fila
+
+
 # ---------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------
@@ -334,3 +406,109 @@ def crear_lider_cuadrilla(
         "role": "lider_cuadrilla",
         "activo": True,
     }
+
+
+@app.get("/api/admin/trabajos", response_model=list[TrabajoOut])
+def listar_trabajos(
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> list[dict]:
+    try:
+        response = (
+            supabase.table("trabajos")
+            .select(
+                "id, titulo, descripcion, estado, lider_id, "
+                "lider:profiles(nombre_completo, email)"
+            )
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los trabajos.",
+        ) from exc
+
+    return [fila_trabajo_a_salida(fila) for fila in response.data or []]
+
+
+@app.post(
+    "/api/admin/trabajos",
+    response_model=TrabajoOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_trabajo(
+    payload: TrabajoCreate,
+    admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    lider = obtener_perfil_lider(payload.lider_id)
+
+    try:
+        response = (
+            supabase.table("trabajos")
+            .insert(
+                {
+                    "titulo": payload.titulo,
+                    "descripcion": payload.descripcion,
+                    "estado": payload.estado,
+                    "lider_id": payload.lider_id,
+                    "asignado_por": admin.id,
+                }
+            )
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al crear el trabajo.",
+        ) from exc
+
+    if not response.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo confirmar la creacion del trabajo.",
+        )
+
+    fila = response.data[0]
+    fila["lider_nombre"] = lider["nombre_completo"]
+    fila["lider_email"] = lider["email"]
+    return fila
+
+
+@app.put("/api/admin/trabajos/{trabajo_id}", response_model=TrabajoOut)
+def actualizar_trabajo(
+    trabajo_id: str,
+    payload: TrabajoUpdate,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    lider = obtener_perfil_lider(payload.lider_id)
+
+    try:
+        response = (
+            supabase.table("trabajos")
+            .update(
+                {
+                    "titulo": payload.titulo,
+                    "descripcion": payload.descripcion,
+                    "estado": payload.estado,
+                    "lider_id": payload.lider_id,
+                }
+            )
+            .eq("id", trabajo_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al actualizar el trabajo.",
+        ) from exc
+
+    if not response.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro un trabajo con ese id.",
+        )
+
+    fila = response.data[0]
+    fila["lider_nombre"] = lider["nombre_completo"]
+    fila["lider_email"] = lider["email"]
+    return fila

@@ -1,5 +1,6 @@
 import { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
+import AsignacionPanel from "./components/AsignacionPanel";
 import LoginPage from "./components/LoginPage";
 import PerfilesPanel from "./components/PerfilesPanel";
 import { supabase } from "./lib/supabaseClient";
@@ -7,9 +8,12 @@ import { Perfil } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
-type Tab = "perfiles";
+type Tab = "perfiles" | "asignacion";
 
-const TABS: { key: Tab; label: string }[] = [{ key: "perfiles", label: "Perfiles" }];
+const TABS: { key: Tab; label: string }[] = [
+  { key: "perfiles", label: "Perfiles" },
+  { key: "asignacion", label: "Asignacion" },
+];
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -125,7 +129,10 @@ export default function App() {
 
       <main className="max-w-5xl mx-auto px-4 py-8">
         {perfil.role === "administrador" ? (
-          tabActiva === "perfiles" && <PerfilesPanel accessToken={session.access_token} />
+          <>
+            {tabActiva === "perfiles" && <PerfilesPanel accessToken={session.access_token} />}
+            {tabActiva === "asignacion" && <AsignacionPanel accessToken={session.access_token} />}
+          </>
         ) : (
           <div className="bg-white rounded-xl shadow-md p-8">
             <h1 className="text-lg font-semibold text-slate-800 mb-2">
