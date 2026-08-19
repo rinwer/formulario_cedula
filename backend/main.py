@@ -136,11 +136,17 @@ class UsuarioOut(BaseModel):
     email: str
     nombre_completo: str
     role: str
+    activo: bool = True
 
 
 class PerfilUpdate(BaseModel):
     nombre_completo: str = Field(..., min_length=1)
+    email: EmailStr
     role: str
+    activo: bool = True
+    password: str | None = Field(
+        default=None, description="Dejar vacio para no cambiar la contrasena"
+    )
 
     @field_validator("nombre_completo")
     @classmethod
@@ -155,6 +161,15 @@ class PerfilUpdate(BaseModel):
     def role_valido(cls, value: str) -> str:
         if value not in ("administrador", "lider_cuadrilla"):
             raise ValueError("El rol debe ser administrador o lider_cuadrilla")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def password_valida(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        if len(value) < 8:
+            raise ValueError("La contrasena debe tener al menos 8 caracteres")
         return value
 
 
@@ -184,7 +199,7 @@ def listar_usuarios(
     try:
         response = (
             supabase.table("profiles")
-            .select("id, email, nombre_completo, role")
+            .select("id, email, nombre_completo, role, activo")
             .order("created_at", desc=True)
             .execute()
         )
@@ -203,16 +218,53 @@ def actualizar_usuario(
     payload: PerfilUpdate,
     admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
-    if usuario_id == admin.id and payload.role != "administrador":
+    if usuario_id == admin.id:
+        if payload.role != "administrador":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No puedes quitarte tu propio rol de administrador.",
+            )
+        if not payload.activo:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No puedes deshabilitar tu propia cuenta.",
+            )
+
+    # Credenciales (email/password) y habilitado/deshabilitado viven en
+    # Supabase Auth, no en public.profiles: se actualizan con la Admin API.
+    atributos_auth: dict = {
+        "email": payload.email,
+        "email_confirm": True,
+        "ban_duration": "none" if payload.activo else "876000h",
+    }
+    if payload.password:
+        atributos_auth["password"] = payload.password
+
+    try:
+        supabase.auth.admin.update_user_by_id(usuario_id, atributos_auth)
+    except Exception as exc:
+        mensaje = str(exc).lower()
+        if "already" in mensaje or "duplicate" in mensaje or "exists" in mensaje:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe un usuario registrado con ese correo.",
+            ) from exc
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes quitarte tu propio rol de administrador.",
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al actualizar las credenciales del usuario.",
+        ) from exc
 
     try:
         response = (
             supabase.table("profiles")
-            .update({"nombre_completo": payload.nombre_completo, "role": payload.role})
+            .update(
+                {
+                    "nombre_completo": payload.nombre_completo,
+                    "email": payload.email,
+                    "role": payload.role,
+                    "activo": payload.activo,
+                }
+            )
             .eq("id", usuario_id)
             .execute()
         )
@@ -280,4 +332,5 @@ def crear_lider_cuadrilla(
         "email": nuevo_usuario.email,
         "nombre_completo": payload.nombre_completo,
         "role": "lider_cuadrilla",
+        "activo": True,
     }

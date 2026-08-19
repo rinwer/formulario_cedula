@@ -36,9 +36,13 @@ export default function PerfilesPanel({ accessToken }: Props) {
 
   const [idEditando, setIdEditando] = useState<string | null>(null);
   const [nombreEditado, setNombreEditado] = useState("");
+  const [emailEditado, setEmailEditado] = useState("");
+  const [passwordEditado, setPasswordEditado] = useState("");
   const [rolEditado, setRolEditado] = useState<"administrador" | "lider_cuadrilla">(
     "lider_cuadrilla"
   );
+  const [activoEditado, setActivoEditado] = useState(true);
+  const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   const cerrarPopup = () => setPopup(initialPopup);
@@ -46,16 +50,28 @@ export default function PerfilesPanel({ accessToken }: Props) {
   const iniciarEdicion = (usuario: Usuario) => {
     setIdEditando(usuario.id);
     setNombreEditado(usuario.nombre_completo);
+    setEmailEditado(usuario.email);
+    setPasswordEditado("");
     setRolEditado(usuario.role);
+    setActivoEditado(usuario.activo);
+    setErrorEdicion(null);
   };
 
   const cancelarEdicion = () => {
     setIdEditando(null);
     setNombreEditado("");
+    setEmailEditado("");
+    setPasswordEditado("");
+    setErrorEdicion(null);
   };
 
   const guardarEdicion = async (usuarioId: string) => {
-    if (!nombreEditado.trim()) return;
+    if (!nombreEditado.trim() || !emailEditado.trim()) return;
+    if (passwordEditado && passwordEditado.length < 8) {
+      setErrorEdicion("La contrasena debe tener al menos 8 caracteres.");
+      return;
+    }
+    setErrorEdicion(null);
     setGuardandoEdicion(true);
     try {
       const res = await fetch(`${API_URL}/api/admin/usuarios/${usuarioId}`, {
@@ -66,7 +82,10 @@ export default function PerfilesPanel({ accessToken }: Props) {
         },
         body: JSON.stringify({
           nombre_completo: nombreEditado.trim(),
+          email: emailEditado.trim(),
           role: rolEditado,
+          activo: activoEditado,
+          password: passwordEditado || null,
         }),
       });
 
@@ -76,18 +95,10 @@ export default function PerfilesPanel({ accessToken }: Props) {
         cancelarEdicion();
       } else {
         const data = await res.json().catch(() => null);
-        setPopup({
-          visible: true,
-          type: "error",
-          message: data?.detail ?? "Ocurrio un error al actualizar el usuario.",
-        });
+        setErrorEdicion(data?.detail ?? "Ocurrio un error al actualizar el usuario.");
       }
     } catch {
-      setPopup({
-        visible: true,
-        type: "error",
-        message: "No se pudo conectar con el servidor. Intenta de nuevo.",
-      });
+      setErrorEdicion("No se pudo conectar con el servidor. Intenta de nuevo.");
     } finally {
       setGuardandoEdicion(false);
     }
@@ -274,8 +285,9 @@ export default function PerfilesPanel({ accessToken }: Props) {
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
                   <th className="py-2 pr-4 font-medium">Nombre</th>
-                  <th className="py-2 pr-4 font-medium">Correo</th>
+                  <th className="py-2 pr-4 font-medium">Correo / contrasena</th>
                   <th className="py-2 pr-4 font-medium">Rol</th>
+                  <th className="py-2 pr-4 font-medium">Estado</th>
                   <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
@@ -283,7 +295,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
                 {usuarios.map((usuario) => {
                   const editando = idEditando === usuario.id;
                   return (
-                    <tr key={usuario.id} className="border-b border-slate-100 last:border-0">
+                    <tr key={usuario.id} className="border-b border-slate-100 last:border-0 align-top">
                       <td className="py-2 pr-4 text-slate-700">
                         {editando ? (
                           <input
@@ -297,7 +309,28 @@ export default function PerfilesPanel({ accessToken }: Props) {
                           usuario.nombre_completo
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-slate-700">{usuario.email}</td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {editando ? (
+                          <div className="space-y-1 min-w-[180px]">
+                            <input
+                              type="email"
+                              value={emailEditado}
+                              onChange={(e) => setEmailEditado(e.target.value)}
+                              className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Correo"
+                            />
+                            <input
+                              type="text"
+                              value={passwordEditado}
+                              onChange={(e) => setPasswordEditado(e.target.value)}
+                              className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Nueva contrasena (opcional)"
+                            />
+                          </div>
+                        ) : (
+                          usuario.email
+                        )}
+                      </td>
                       <td className="py-2 pr-4">
                         {editando ? (
                           <select
@@ -323,23 +356,56 @@ export default function PerfilesPanel({ accessToken }: Props) {
                           </span>
                         )}
                       </td>
+                      <td className="py-2 pr-4">
+                        {editando ? (
+                          <label className="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={activoEditado}
+                              onChange={(e) => setActivoEditado(e.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Habilitado
+                          </label>
+                        ) : (
+                          <span
+                            className={
+                              "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                              (usuario.activo
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-200 text-slate-600")
+                            }
+                          >
+                            {usuario.activo ? "Habilitado" : "Deshabilitado"}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 pr-4 text-right whitespace-nowrap">
                         {editando ? (
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => guardarEdicion(usuario.id)}
-                              disabled={guardandoEdicion || !nombreEditado.trim()}
-                              className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 px-3 py-1 rounded-md"
-                            >
-                              {guardandoEdicion ? "Guardando..." : "Guardar"}
-                            </button>
-                            <button
-                              onClick={cancelarEdicion}
-                              disabled={guardandoEdicion}
-                              className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md"
-                            >
-                              Cancelar
-                            </button>
+                          <div className="flex flex-col items-end gap-2">
+                            {errorEdicion && (
+                              <p className="text-xs text-red-600 max-w-[200px] text-right">
+                                {errorEdicion}
+                              </p>
+                            )}
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => guardarEdicion(usuario.id)}
+                                disabled={
+                                  guardandoEdicion || !nombreEditado.trim() || !emailEditado.trim()
+                                }
+                                className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 px-3 py-1 rounded-md"
+                              >
+                                {guardandoEdicion ? "Guardando..." : "Guardar"}
+                              </button>
+                              <button
+                                onClick={cancelarEdicion}
+                                disabled={guardandoEdicion}
+                                className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
                           </div>
                         ) : (
                           <button

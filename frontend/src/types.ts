@@ -12,4 +12,5 @@ export type Usuario = {
   email: string;
   nombre_completo: string;
   role: Rol;
+  activo: boolean;
 };

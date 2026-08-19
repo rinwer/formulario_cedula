@@ -85,9 +85,13 @@ Respuestas: `201` con el usuario creado, `401` sin token o token invalido,
   (`administrador` y `lider_cuadrilla`) para la tabla de la pestana
   "Perfiles".
 - `PUT /api/admin/usuarios/{id}` (solo administrador): actualiza
-  `nombre_completo` y `role` de un perfil existente. Un administrador no
-  puede quitarse a si mismo el rol de administrador (evita quedar
-  bloqueado sin ningun admin activo).
+  `nombre_completo`, `email`, `role`, `activo` y opcionalmente `password`
+  de un usuario existente. El email/password se actualizan en Supabase
+  Auth via `supabase.auth.admin.update_user_by_id`; `activo` se traduce a
+  `ban_duration` (`"none"` si esta habilitado, una duracion larga si no)
+  para bloquear o permitir el login. Un administrador no puede quitarse a
+  si mismo el rol de administrador ni deshabilitar su propia cuenta
+  (evita quedar bloqueado sin ningun admin activo).
 
 ## 3. Frontend
 
@@ -120,8 +124,9 @@ Abre `http://localhost:5173`:
 2. Si el usuario logueado es `administrador`, aparece en la barra superior
    la pestana **Perfiles**: formulario para crear un `lider_cuadrilla`
    (nombre, correo, contrasena temporal) y tabla con todos los usuarios
-   existentes y su rol, cada uno con boton **Editar** para cambiar su
-   nombre y/o su rol y guardar.
+   existentes. Cada uno tiene boton **Editar** para cambiar nombre,
+   correo, contrasena (opcional, se deja en blanco para no cambiarla),
+   rol, y un check **Habilitado** para permitir o bloquear su login.
 3. Si es `lider_cuadrilla`, ve una pantalla de bienvenida simple (su panel
    propio se construye en un paso siguiente).
 

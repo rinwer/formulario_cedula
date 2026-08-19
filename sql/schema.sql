@@ -21,11 +21,18 @@ create table if not exists public.profiles (
   nombre_completo text,
   role text not null default 'lider_cuadrilla'
     check (role in ('administrador', 'lider_cuadrilla')),
+  activo boolean not null default true,
   created_at timestamptz not null default now()
 );
 
+-- Por si la tabla ya existia de una corrida anterior de este script
+-- (create table if not exists no agrega columnas nuevas a una tabla
+-- existente):
+alter table public.profiles add column if not exists activo boolean not null default true;
+
 comment on table public.profiles is 'Perfil y rol de cada usuario autenticado. 1:1 con auth.users.';
 comment on column public.profiles.role is 'Rol del usuario: administrador o lider_cuadrilla.';
+comment on column public.profiles.activo is 'Si es false, el usuario esta deshabilitado (no puede iniciar sesion).';
 
 -- ---------------------------------------------------------
 -- 2. Trigger: crear el profile automaticamente al crear un auth.users
