@@ -34,7 +34,64 @@ export default function PerfilesPanel({ accessToken }: Props) {
   const [cargandoLista, setCargandoLista] = useState(false);
   const [errorLista, setErrorLista] = useState<string | null>(null);
 
+  const [idEditando, setIdEditando] = useState<string | null>(null);
+  const [nombreEditado, setNombreEditado] = useState("");
+  const [rolEditado, setRolEditado] = useState<"administrador" | "lider_cuadrilla">(
+    "lider_cuadrilla"
+  );
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
   const cerrarPopup = () => setPopup(initialPopup);
+
+  const iniciarEdicion = (usuario: Usuario) => {
+    setIdEditando(usuario.id);
+    setNombreEditado(usuario.nombre_completo);
+    setRolEditado(usuario.role);
+  };
+
+  const cancelarEdicion = () => {
+    setIdEditando(null);
+    setNombreEditado("");
+  };
+
+  const guardarEdicion = async (usuarioId: string) => {
+    if (!nombreEditado.trim()) return;
+    setGuardandoEdicion(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/usuarios/${usuarioId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          nombre_completo: nombreEditado.trim(),
+          role: rolEditado,
+        }),
+      });
+
+      if (res.ok) {
+        const actualizado: Usuario = await res.json();
+        setUsuarios((prev) => prev.map((u) => (u.id === actualizado.id ? actualizado : u)));
+        cancelarEdicion();
+      } else {
+        const data = await res.json().catch(() => null);
+        setPopup({
+          visible: true,
+          type: "error",
+          message: data?.detail ?? "Ocurrio un error al actualizar el usuario.",
+        });
+      }
+    } catch {
+      setPopup({
+        visible: true,
+        type: "error",
+        message: "No se pudo conectar con el servidor. Intenta de nuevo.",
+      });
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  };
 
   const cargarUsuarios = async () => {
     setCargandoLista(true);
@@ -219,27 +276,83 @@ export default function PerfilesPanel({ accessToken }: Props) {
                   <th className="py-2 pr-4 font-medium">Nombre</th>
                   <th className="py-2 pr-4 font-medium">Correo</th>
                   <th className="py-2 pr-4 font-medium">Rol</th>
+                  <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {usuarios.map((usuario) => (
-                  <tr key={usuario.id} className="border-b border-slate-100 last:border-0">
-                    <td className="py-2 pr-4 text-slate-700">{usuario.nombre_completo}</td>
-                    <td className="py-2 pr-4 text-slate-700">{usuario.email}</td>
-                    <td className="py-2 pr-4">
-                      <span
-                        className={
-                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
-                          (usuario.role === "administrador"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-emerald-100 text-emerald-700")
-                        }
-                      >
-                        {ROLE_LABEL[usuario.role] ?? usuario.role}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {usuarios.map((usuario) => {
+                  const editando = idEditando === usuario.id;
+                  return (
+                    <tr key={usuario.id} className="border-b border-slate-100 last:border-0">
+                      <td className="py-2 pr-4 text-slate-700">
+                        {editando ? (
+                          <input
+                            type="text"
+                            value={nombreEditado}
+                            onChange={(e) => setNombreEditado(e.target.value)}
+                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                        ) : (
+                          usuario.nombre_completo
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">{usuario.email}</td>
+                      <td className="py-2 pr-4">
+                        {editando ? (
+                          <select
+                            value={rolEditado}
+                            onChange={(e) =>
+                              setRolEditado(e.target.value as "administrador" | "lider_cuadrilla")
+                            }
+                            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="lider_cuadrilla">Lider de cuadrilla</option>
+                            <option value="administrador">Administrador</option>
+                          </select>
+                        ) : (
+                          <span
+                            className={
+                              "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                              (usuario.role === "administrador"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-emerald-100 text-emerald-700")
+                            }
+                          >
+                            {ROLE_LABEL[usuario.role] ?? usuario.role}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 text-right whitespace-nowrap">
+                        {editando ? (
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => guardarEdicion(usuario.id)}
+                              disabled={guardandoEdicion || !nombreEditado.trim()}
+                              className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 px-3 py-1 rounded-md"
+                            >
+                              {guardandoEdicion ? "Guardando..." : "Guardar"}
+                            </button>
+                            <button
+                              onClick={cancelarEdicion}
+                              disabled={guardandoEdicion}
+                              className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => iniciarEdicion(usuario)}
+                            className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1"
+                          >
+                            Editar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

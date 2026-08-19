@@ -138,6 +138,26 @@ class UsuarioOut(BaseModel):
     role: str
 
 
+class PerfilUpdate(BaseModel):
+    nombre_completo: str = Field(..., min_length=1)
+    role: str
+
+    @field_validator("nombre_completo")
+    @classmethod
+    def nombre_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("El nombre completo no puede estar vacio")
+        return value
+
+    @field_validator("role")
+    @classmethod
+    def role_valido(cls, value: str) -> str:
+        if value not in ("administrador", "lider_cuadrilla"):
+            raise ValueError("El rol debe ser administrador o lider_cuadrilla")
+        return value
+
+
 # ---------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------
@@ -175,6 +195,40 @@ def listar_usuarios(
         ) from exc
 
     return response.data or []
+
+
+@app.put("/api/admin/usuarios/{usuario_id}", response_model=UsuarioOut)
+def actualizar_usuario(
+    usuario_id: str,
+    payload: PerfilUpdate,
+    admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    if usuario_id == admin.id and payload.role != "administrador":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes quitarte tu propio rol de administrador.",
+        )
+
+    try:
+        response = (
+            supabase.table("profiles")
+            .update({"nombre_completo": payload.nombre_completo, "role": payload.role})
+            .eq("id", usuario_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al actualizar el usuario.",
+        ) from exc
+
+    if not response.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro un usuario con ese id.",
+        )
+
+    return response.data[0]
 
 
 @app.post(
