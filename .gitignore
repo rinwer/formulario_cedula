@@ -1,6 +1,7 @@
 # Ignorar los entornos virtuales de Python
 backend/venv/
 frontend/node_modules/
+frontend/dist/
 
 # Ignorar archivos compilados en caché.
 backend/__pycache__/

@@ -50,6 +50,7 @@ bearer_scheme = HTTPBearer(auto_error=True)
 class UsuarioActual(BaseModel):
     id: str
     email: str | None
+    nombre_completo: str | None
     role: str
 
 
@@ -57,8 +58,8 @@ def get_usuario_actual(
     credenciales: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> UsuarioActual:
     """Valida el JWT (access token de Supabase Auth) enviado en el header
-    Authorization: Bearer <token> y obtiene el rol del usuario desde
-    public.profiles."""
+    Authorization: Bearer <token> y obtiene el perfil (rol, nombre) del
+    usuario desde public.profiles."""
     token = credenciales.credentials
 
     try:
@@ -79,7 +80,7 @@ def get_usuario_actual(
     try:
         perfil = (
             supabase.table("profiles")
-            .select("role")
+            .select("nombre_completo, role")
             .eq("id", usuario.id)
             .single()
             .execute()
@@ -90,7 +91,12 @@ def get_usuario_actual(
             detail="El usuario no tiene un perfil asociado.",
         ) from exc
 
-    return UsuarioActual(id=usuario.id, email=usuario.email, role=perfil.data["role"])
+    return UsuarioActual(
+        id=usuario.id,
+        email=usuario.email,
+        nombre_completo=perfil.data["nombre_completo"],
+        role=perfil.data["role"],
+    )
 
 
 def requerir_administrador(
@@ -140,6 +146,35 @@ class UsuarioOut(BaseModel):
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/me", response_model=UsuarioActual)
+def obtener_usuario_actual(
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> UsuarioActual:
+    """Datos del usuario logueado (id, email, nombre, rol). El frontend la
+    llama justo despues del login para decidir que interfaz mostrar."""
+    return usuario
+
+
+@app.get("/api/admin/usuarios", response_model=list[UsuarioOut])
+def listar_usuarios(
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> list[dict]:
+    try:
+        response = (
+            supabase.table("profiles")
+            .select("id, email, nombre_completo, role")
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los usuarios.",
+        ) from exc
+
+    return response.data or []
 
 
 @app.post(

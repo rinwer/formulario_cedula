@@ -17,6 +17,7 @@ drop table if exists public.personas;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
+  email text,
   nombre_completo text,
   role text not null default 'lider_cuadrilla'
     check (role in ('administrador', 'lider_cuadrilla')),
@@ -31,8 +32,9 @@ comment on column public.profiles.role is 'Rol del usuario: administrador o lide
 -- ---------------------------------------------------------
 -- El backend (FastAPI), al crear un usuario con supabase.auth.admin.create_user,
 -- manda el rol en app_metadata (no editable por el propio usuario) y el
--- nombre en user_metadata. Este trigger copia esos datos a public.profiles
--- justo despues de que Supabase inserta la fila en auth.users.
+-- nombre en user_metadata. Este trigger copia esos datos (mas el email)
+-- a public.profiles justo despues de que Supabase inserta la fila en
+-- auth.users.
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -41,9 +43,10 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, nombre_completo, role)
+  insert into public.profiles (id, email, nombre_completo, role)
   values (
     new.id,
+    new.email,
     coalesce(new.raw_user_meta_data ->> 'nombre_completo', ''),
     coalesce(new.raw_app_meta_data ->> 'role', 'lider_cuadrilla')
   );

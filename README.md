@@ -19,7 +19,10 @@ formulario-cedula/
 │   ├── requirements.txt
 │   └── .env.example
 └── frontend/               React + TypeScript + Tailwind
-    ├── src/App.tsx
+    ├── src/App.tsx                     Login + shell con pestanas segun rol
+    ├── src/lib/supabaseClient.ts       Cliente Supabase (anon key, solo Auth)
+    ├── src/components/LoginPage.tsx
+    ├── src/components/PerfilesPanel.tsx  Pestana "Perfiles" (crear/listar lideres)
     └── .env.example
 ```
 
@@ -72,19 +75,54 @@ Requiere header `Authorization: Bearer <access_token>` de un usuario cuyo
 Respuestas: `201` con el usuario creado, `401` sin token o token invalido,
 `403` si quien llama no es administrador, `409` si el correo ya existe.
 
+### Endpoints adicionales
+
+- `GET /api/me` (requiere `Authorization: Bearer <access_token>` de
+  cualquier usuario logueado): devuelve `id`, `email`, `nombre_completo` y
+  `role`. El frontend lo llama justo despues del login para decidir que
+  interfaz mostrar.
+- `GET /api/admin/usuarios` (solo administrador): lista todos los perfiles
+  (`administrador` y `lider_cuadrilla`) para la tabla de la pestana
+  "Perfiles".
+
 ## 3. Frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env           # VITE_API_URL=http://localhost:8000
+cp .env.example .env
+```
+
+Completa `frontend/.env` con:
+
+```
+VITE_API_URL=http://localhost:8000
+VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
+VITE_SUPABASE_ANON_KEY=TU_ANON_KEY
+```
+
+`VITE_SUPABASE_ANON_KEY` es la clave publica (`anon`) del paso 1 — no la
+`service_role`. El frontend la usa unicamente para iniciar sesion contra
+Supabase Auth (`supabase.auth.signInWithPassword`); toda la lectura/
+escritura de datos sigue pasando por el backend.
+
+```bash
 npm run dev
 ```
 
-Abre `http://localhost:5173`. Por ahora muestra una pantalla de
-"en construccion": el login y el panel de administracion (que consume
-`POST /api/admin/lideres`) se implementan en el siguiente paso, una vez
-validada la base de datos y el backend.
+Abre `http://localhost:5173`:
+
+1. Pantalla de **login** (correo + contrasena).
+2. Si el usuario logueado es `administrador`, aparece en la barra superior
+   la pestana **Perfiles**: formulario para crear un `lider_cuadrilla`
+   (nombre, correo, contrasena temporal) y tabla con todos los usuarios
+   existentes y su rol.
+3. Si es `lider_cuadrilla`, ve una pantalla de bienvenida simple (su panel
+   propio se construye en un paso siguiente).
+
+El access token de la sesion de Supabase se manda como
+`Authorization: Bearer` en cada llamada a `/api/me`, `/api/admin/usuarios`
+y `/api/admin/lideres`.
 
 ## Notas de seguridad
 
