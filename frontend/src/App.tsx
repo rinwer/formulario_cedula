@@ -76,7 +76,7 @@ export default function App() {
   if (!perfil) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-white rounded-xl shadow-md p-8 text-center">
+        <div className="w-full max-w-sm bg-white rounded-xl shadow-md p-5 sm:p-8 text-center">
           <p className="text-sm text-slate-600 mb-4">Cargando tu perfil...</p>
           <button
             onClick={cerrarSesion}
@@ -92,8 +92,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-6">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <span className="font-semibold text-slate-800">Gestion de Usuarios</span>
             {perfil.role === "administrador" && (
               <nav className="flex gap-4">
@@ -115,11 +115,13 @@ export default function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-500">{perfil.nombre_completo || perfil.email}</span>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <span className="text-sm text-slate-500 max-w-[45vw] sm:max-w-none truncate">
+              {perfil.nombre_completo || perfil.email}
+            </span>
             <button
               onClick={cerrarSesion}
-              className="text-sm text-slate-600 hover:text-slate-900 font-medium"
+              className="text-sm text-slate-600 hover:text-slate-900 font-medium whitespace-nowrap"
             >
               Cerrar sesion
             </button>
@@ -127,14 +129,14 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      <main className="max-w-5xl mx-auto px-4 py-6 sm:py-8">
         {perfil.role === "administrador" ? (
           <>
             {tabActiva === "perfiles" && <PerfilesPanel accessToken={session.access_token} />}
             {tabActiva === "asignacion" && <AsignacionPanel accessToken={session.access_token} />}
           </>
         ) : (
-          <div className="bg-white rounded-xl shadow-md p-8">
+          <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
             <h1 className="text-lg font-semibold text-slate-800 mb-2">
               Bienvenido, {perfil.nombre_completo || perfil.email}
             </h1>

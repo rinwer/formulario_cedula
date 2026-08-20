@@ -197,7 +197,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-md p-8">
+      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
         <h2 className="text-lg font-semibold text-slate-800 mb-6">Nuevo lider de cuadrilla</h2>
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
@@ -261,7 +261,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
         </form>
       </div>
 
-      <div className="bg-white rounded-xl shadow-md p-8">
+      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-slate-800">Usuarios</h2>
           <button
