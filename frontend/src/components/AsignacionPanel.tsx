@@ -334,8 +334,9 @@ export default function AsignacionPanel({ accessToken }: Props) {
         <div className="mt-6 pt-6 border-t border-slate-200">
           <h3 className="text-sm font-semibold text-slate-800 mb-1">Cargar actividades (CSV)</h3>
           <p className="text-xs text-slate-500 mb-3">
-            Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE. El SITE
-            debe coincidir con el de una asignacion existente.
+            Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE (separadas
+            por coma, punto y coma o punto — se detecta solo). El SITE debe coincidir con el de una
+            asignacion existente.
           </p>
           <input
             ref={inputArchivoRef}

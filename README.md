@@ -109,10 +109,13 @@ salvo `GET /api/mis-trabajos` (cualquier usuario logueado).
   no). `site` es unico: crear/editar con un site repetido devuelve `409`.
 - `POST /api/admin/actividades/importar` (`multipart/form-data`, campo
   `archivo`): importa un CSV con columnas `SITE, ACTIVIDAD, TIPIFICACION,
-  HW-ACTIVIDAD, QTY, AVANCE`. Cada fila se liga al trabajo cuyo `site`
-  coincida (sin distinguir mayusculas/espacios). Por cada trabajo
-  afectado se reemplazan sus actividades anteriores por las del CSV
-  nuevo. Responde `{ actividades_cargadas, sitios_no_encontrados }`.
+  HW-ACTIVIDAD, QTY, AVANCE`. El delimitador se detecta solo probando
+  coma, punto y coma o punto contra el encabezado (asi soporta CSV
+  exportados desde Excel en espanol, que suelen venir con `;`). Cada fila
+  se liga al trabajo cuyo `site` coincida (sin distinguir mayusculas/
+  espacios). Por cada trabajo afectado se reemplazan sus actividades
+  anteriores por las del CSV nuevo. Responde
+  `{ actividades_cargadas, sitios_no_encontrados }`.
 - `GET /api/mis-trabajos`: trabajos asignados al usuario logueado (por
   `lider_id`), cada uno con sus actividades importadas. Es lo que
   consume el panel del `lider_cuadrilla`.

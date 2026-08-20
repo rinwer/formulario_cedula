@@ -557,6 +557,21 @@ def actualizar_trabajo(
 
 
 COLUMNAS_CSV_ACTIVIDADES = ("SITE", "ACTIVIDAD", "TIPIFICACION", "HW-ACTIVIDAD", "QTY", "AVANCE")
+DELIMITADORES_CSV_SOPORTADOS = (",", ";", ".")
+
+
+def _detectar_delimitador_csv(texto: str) -> str | None:
+    """Prueba cada delimitador soportado partiendo solo la primera linea
+    (el encabezado); se queda con el primero que produzca exactamente las
+    columnas esperadas. Evita falsos positivos de un Sniffer generico
+    (por ejemplo, un "." dentro de un nombre de site no debe confundirse
+    con el separador de columnas)."""
+    primera_linea = texto.splitlines()[0] if texto.strip() else ""
+    for delimitador in DELIMITADORES_CSV_SOPORTADOS:
+        columnas = {c.strip().upper() for c in primera_linea.split(delimitador)}
+        if set(COLUMNAS_CSV_ACTIVIDADES).issubset(columnas):
+            return delimitador
+    return None
 
 
 @app.post("/api/admin/actividades/importar", response_model=ImportarActividadesResultado)
@@ -577,23 +592,23 @@ def importar_actividades(
             detail="El archivo debe ser un CSV en UTF-8.",
         ) from exc
 
-    # Excel en espanol suele exportar CSV delimitado por ";" en vez de ",".
-    # Se detecta el delimitador real en vez de asumir coma.
-    try:
-        dialecto = csv.Sniffer().sniff(texto[:4096], delimiters=",;\t")
-    except csv.Error:
-        dialecto = csv.excel
-
-    lector = csv.DictReader(io.StringIO(texto), dialect=dialecto)
-    encabezados = {(c or "").strip().upper() for c in (lector.fieldnames or [])}
-    if not set(COLUMNAS_CSV_ACTIVIDADES).issubset(encabezados):
+    # Excel en espanol suele exportar CSV delimitado por ";" (o incluso ".")
+    # en vez de ",". Se detecta el delimitador real comparando el
+    # encabezado contra las columnas esperadas, en vez de asumir coma.
+    delimitador = _detectar_delimitador_csv(texto)
+    if delimitador is None:
+        primera_linea = texto.splitlines()[0] if texto.strip() else ""
+        encabezados_sin_separar = {c.strip().upper() for c in primera_linea.split(",")}
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"El CSV debe tener las columnas: {', '.join(COLUMNAS_CSV_ACTIVIDADES)}. "
-                f"Columnas encontradas: {', '.join(sorted(encabezados)) or 'ninguna'}."
+                f"El CSV debe tener las columnas: {', '.join(COLUMNAS_CSV_ACTIVIDADES)} "
+                f"(separadas por coma, punto y coma o punto). "
+                f"Columnas encontradas: {', '.join(sorted(encabezados_sin_separar)) or 'ninguna'}."
             ),
         )
+
+    lector = csv.DictReader(io.StringIO(texto), delimiter=delimitador)
 
     try:
         trabajos_resp = supabase.table("trabajos").select("id, site").execute()
