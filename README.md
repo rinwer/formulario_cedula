@@ -25,6 +25,7 @@ formulario-cedula/
     ├── src/components/PerfilesPanel.tsx     Pestana "Perfiles" (crear/listar/editar lideres)
     ├── src/components/AsignacionPanel.tsx   Pestana "Asignacion" (trabajos + carga CSV)
     ├── src/components/MisTrabajosPanel.tsx  Vista del lider_cuadrilla (sus trabajos + actividades)
+    ├── src/components/DailyPanel.tsx        Pestana "Daily" (calendario + avance del dia por site)
     └── .env.example
 ```
 
@@ -128,6 +129,11 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   anterior, para llevar una bitacora dia a dia.
 - `GET /api/mis-trabajos/{trabajo_id}/avances`: historial de avances
   guardados para ese trabajo (mas recientes primero).
+- `GET /api/admin/avances-diarios?fecha=YYYY-MM-DD` (solo administrador,
+  `fecha` opcional, por defecto hoy): por cada trabajo devuelve el site,
+  el lider, si ya actualizo el avance ese dia (`actualizado`), el detalle
+  de lo avanzado (`detalle`, sumado por actividad) y los comentarios que
+  dejo ese dia. Es lo que consume la pestana "Daily".
 
 ## 3. Frontend
 
@@ -167,6 +173,12 @@ Abre `http://localhost:5173`:
      site, zona, lider de cuadrilla — el selector solo muestra lideres
      habilitados), un boton para cargar el CSV de actividades, y la
      tabla de trabajos asignados (editable: ID/SMP, site, lider, zona).
+   - Pestana **Daily**: un calendario a la izquierda (resalta el dia de
+     hoy y el dia seleccionado; "Ir a hoy" para volver rapido) y a la
+     derecha, por cada trabajo, el site, el lider, si ya actualizo el
+     avance de ese dia o no, lo que reporto (por actividad) y su
+     comentario. Cambiar el dia en el calendario recarga la tabla con
+     los avances de ese dia.
 3. Si es `lider_cuadrilla`, ve sus trabajos asignados (ID/SMP, site,
    zona) y, para cada uno, la tabla de actividades cargadas por CSV con
    una columna extra **Avance de hoy** para escribir cuanto avanzo en

@@ -6,9 +6,10 @@ Unico responsable de hablar con Supabase con la service_role key.
 import csv
 import io
 import os
+from datetime import date, datetime, timedelta, timezone
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -265,6 +266,25 @@ class AvanceDiarioOut(BaseModel):
     comentario: str | None
     created_at: str
     detalles: list[AvanceDetalleOut] = []
+
+
+class AvanceResumenDetalle(BaseModel):
+    actividad: str | None
+    hw_actividad: str | None
+    cantidad: int
+
+
+class AvanceDiarioAdminOut(BaseModel):
+    trabajo_id: str
+    id_smp: str
+    site: str
+    zona: str
+    lider_id: str
+    lider_nombre: str | None = None
+    lider_email: str | None = None
+    actualizado: bool
+    comentarios: list[str] = []
+    detalle: list[AvanceResumenDetalle] = []
 
 
 def obtener_trabajo_del_lider(trabajo_id: str, lider_id: str) -> dict:
@@ -960,3 +980,139 @@ def listar_avances_diarios(
         avance["detalles"] = detalles_por_avance.get(avance["id"], [])
 
     return avances
+
+
+@app.get("/api/admin/avances-diarios", response_model=list[AvanceDiarioAdminOut])
+def listar_avances_diarios_admin(
+    fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto hoy"),
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> list[dict]:
+    """Vista 'Daily' del administrador: por cada trabajo, si el lider ya
+    actualizo el avance de un dia dado (por defecto hoy), cuanto reporto
+    y que comentario dejo."""
+    try:
+        fecha_obj = date.fromisoformat(fecha) if fecha else date.today()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+    inicio = datetime.combine(fecha_obj, datetime.min.time(), tzinfo=timezone.utc)
+    fin = inicio + timedelta(days=1)
+
+    try:
+        trabajos_resp = (
+            supabase.table("trabajos")
+            .select(
+                "id, id_smp, site, zona, lider_id, "
+                "lider:profiles!lider_id(nombre_completo, email)"
+            )
+            .order("site")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los trabajos.",
+        ) from exc
+
+    trabajos = trabajos_resp.data or []
+    if not trabajos:
+        return []
+
+    trabajo_ids = [t["id"] for t in trabajos]
+
+    try:
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select("id, trabajo_id, comentario")
+            .in_("trabajo_id", trabajo_ids)
+            .gte("created_at", inicio.isoformat())
+            .lt("created_at", fin.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances del dia.",
+        ) from exc
+
+    avances_del_dia = avances_resp.data or []
+    avance_ids = [a["id"] for a in avances_del_dia]
+
+    detalles_por_avance: dict[str, list[dict]] = {}
+    if avance_ids:
+        try:
+            detalles_resp = (
+                supabase.table("avances_diarios_detalle")
+                .select("avance_diario_id, actividad_id, cantidad")
+                .in_("avance_diario_id", avance_ids)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener el detalle de los avances.",
+            ) from exc
+        for fila in detalles_resp.data or []:
+            detalles_por_avance.setdefault(fila["avance_diario_id"], []).append(fila)
+
+    try:
+        actividades_resp = (
+            supabase.table("actividades")
+            .select("id, actividad, hw_actividad")
+            .in_("trabajo_id", trabajo_ids)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener las actividades.",
+        ) from exc
+
+    actividades_por_id = {a["id"]: a for a in actividades_resp.data or []}
+
+    avances_por_trabajo: dict[str, list[dict]] = {}
+    for avance in avances_del_dia:
+        avances_por_trabajo.setdefault(avance["trabajo_id"], []).append(avance)
+
+    resultado = []
+    for trabajo in trabajos:
+        lider = trabajo.get("lider") or {}
+        avances_trabajo = avances_por_trabajo.get(trabajo["id"], [])
+
+        comentarios = [a["comentario"] for a in avances_trabajo if a.get("comentario")]
+
+        cantidad_por_actividad: dict[str, int] = {}
+        for avance in avances_trabajo:
+            for detalle in detalles_por_avance.get(avance["id"], []):
+                cantidad_por_actividad[detalle["actividad_id"]] = (
+                    cantidad_por_actividad.get(detalle["actividad_id"], 0) + detalle["cantidad"]
+                )
+
+        detalle_resumen = [
+            {
+                "actividad": actividades_por_id.get(actividad_id, {}).get("actividad"),
+                "hw_actividad": actividades_por_id.get(actividad_id, {}).get("hw_actividad"),
+                "cantidad": cantidad,
+            }
+            for actividad_id, cantidad in cantidad_por_actividad.items()
+        ]
+
+        resultado.append(
+            {
+                "trabajo_id": trabajo["id"],
+                "id_smp": trabajo["id_smp"],
+                "site": trabajo["site"],
+                "zona": trabajo["zona"],
+                "lider_id": trabajo["lider_id"],
+                "lider_nombre": lider.get("nombre_completo"),
+                "lider_email": lider.get("email"),
+                "actualizado": len(avances_trabajo) > 0,
+                "comentarios": comentarios,
+                "detalle": detalle_resumen,
+            }
+        )
+
+    return resultado

@@ -50,3 +50,22 @@ export type AvanceDiario = {
   created_at: string;
   detalles: AvanceDetalle[];
 };
+
+export type AvanceResumenDetalle = {
+  actividad: string | null;
+  hw_actividad: string | null;
+  cantidad: number;
+};
+
+export type AvanceDiarioAdmin = {
+  trabajo_id: string;
+  id_smp: string;
+  site: string;
+  zona: string;
+  lider_id: string;
+  lider_nombre: string | null;
+  lider_email: string | null;
+  actualizado: boolean;
+  comentarios: string[];
+  detalle: AvanceResumenDetalle[];
+};

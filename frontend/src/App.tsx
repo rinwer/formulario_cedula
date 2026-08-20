@@ -1,6 +1,7 @@
 import { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import AsignacionPanel from "./components/AsignacionPanel";
+import DailyPanel from "./components/DailyPanel";
 import LoginPage from "./components/LoginPage";
 import MisTrabajosPanel from "./components/MisTrabajosPanel";
 import PerfilesPanel from "./components/PerfilesPanel";
@@ -9,11 +10,12 @@ import { Perfil } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
-type Tab = "perfiles" | "asignacion";
+type Tab = "perfiles" | "asignacion" | "daily";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "perfiles", label: "Perfiles" },
   { key: "asignacion", label: "Asignacion" },
+  { key: "daily", label: "Daily" },
 ];
 
 export default function App() {
@@ -135,6 +137,7 @@ export default function App() {
           <>
             {tabActiva === "perfiles" && <PerfilesPanel accessToken={session.access_token} />}
             {tabActiva === "asignacion" && <AsignacionPanel accessToken={session.access_token} />}
+            {tabActiva === "daily" && <DailyPanel accessToken={session.access_token} />}
           </>
         ) : (
           <MisTrabajosPanel accessToken={session.access_token} />
