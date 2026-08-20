@@ -19,6 +19,12 @@ function formatearFecha(iso: string): string {
 
 type MensajeState = { type: "success" | "error"; text: string } | null;
 
+function qtyNumerico(qty: string | null): number | null {
+  if (qty === null || qty.trim() === "") return null;
+  const valor = Number(qty);
+  return Number.isFinite(valor) ? valor : null;
+}
+
 type TrabajoCardProps = {
   trabajo: TrabajoConActividades;
   accessToken: string;
@@ -37,6 +43,23 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
   trabajo.actividades.forEach((a) => {
     nombresActividad[a.id] = a.actividad ?? "(sin nombre)";
   });
+
+  const acumuladoPorActividad: Record<string, number> = {};
+  historial.forEach((avance) => {
+    avance.detalles.forEach((d) => {
+      acumuladoPorActividad[d.actividad_id] = (acumuladoPorActividad[d.actividad_id] ?? 0) + d.cantidad;
+    });
+  });
+
+  const actividadesCompletas = new Set(
+    trabajo.actividades
+      .filter((a) => {
+        const qtyMax = qtyNumerico(a.qty);
+        const acumulado = acumuladoPorActividad[a.id] ?? 0;
+        return qtyMax !== null && acumulado >= qtyMax;
+      })
+      .map((a) => a.id)
+  );
 
   const cargarHistorial = async () => {
     setCargandoHistorial(true);
@@ -61,7 +84,7 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
 
   const handleGuardar = async () => {
     const detalles = Object.entries(avances)
-      .filter(([, valor]) => valor.trim() !== "")
+      .filter(([actividad_id, valor]) => valor.trim() !== "" && !actividadesCompletas.has(actividad_id))
       .map(([actividad_id, valor]) => ({ actividad_id, cantidad: Number(valor) }));
 
     const comentarioLimpio = comentario.trim();
@@ -132,31 +155,49 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
                   <th className="py-2 pr-4 font-medium">Qty</th>
                   <th className="py-2 pr-4 font-medium">Avance</th>
                   <th className="py-2 pr-4 font-medium">Avance de hoy</th>
+                  <th className="py-2 pr-4 font-medium">Completado</th>
                 </tr>
               </thead>
               <tbody>
-                {trabajo.actividades.map((actividad) => (
-                  <tr key={actividad.id} className="border-b border-slate-100 last:border-0">
-                    <td className="py-2 pr-4 text-slate-700">{actividad.actividad}</td>
-                    <td className="py-2 pr-4 text-slate-700">{actividad.tipificacion}</td>
-                    <td className="py-2 pr-4 text-slate-700">{actividad.hw_actividad}</td>
-                    <td className="py-2 pr-4 text-slate-700">{actividad.qty}</td>
-                    <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
-                    <td className="py-2 pr-4">
-                      <input
-                        type="number"
-                        min={0}
-                        inputMode="numeric"
-                        value={avances[actividad.id] ?? ""}
-                        onChange={(e) =>
-                          setAvances((prev) => ({ ...prev, [actividad.id]: e.target.value }))
-                        }
-                        className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0"
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {trabajo.actividades.map((actividad) => {
+                  const qtyMax = qtyNumerico(actividad.qty);
+                  const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
+                  const completa = actividadesCompletas.has(actividad.id);
+                  return (
+                    <tr key={actividad.id} className="border-b border-slate-100 last:border-0">
+                      <td className="py-2 pr-4 text-slate-700">{actividad.actividad}</td>
+                      <td className="py-2 pr-4 text-slate-700">{actividad.tipificacion}</td>
+                      <td className="py-2 pr-4 text-slate-700">{actividad.hw_actividad}</td>
+                      <td className="py-2 pr-4 text-slate-700">{actividad.qty}</td>
+                      <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          value={completa ? "" : avances[actividad.id] ?? ""}
+                          onChange={(e) =>
+                            setAvances((prev) => ({ ...prev, [actividad.id]: e.target.value }))
+                          }
+                          disabled={completa}
+                          className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="py-2 pr-4">
+                        {completa ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                            Completado
+                          </span>
+                        ) : qtyMax !== null ? (
+                          <span className="text-xs text-slate-400">
+                            {acumulado}/{qtyMax}
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

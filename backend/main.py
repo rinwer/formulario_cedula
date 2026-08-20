@@ -801,7 +801,7 @@ def registrar_avance_diario(
         try:
             actividades_resp = (
                 supabase.table("actividades")
-                .select("id")
+                .select("id, actividad, qty")
                 .eq("trabajo_id", trabajo_id)
                 .execute()
             )
@@ -811,12 +811,48 @@ def registrar_avance_diario(
                 detail="Error interno al validar las actividades.",
             ) from exc
 
-        ids_validos = {a["id"] for a in actividades_resp.data or []}
-        if any(d.actividad_id not in ids_validos for d in payload.detalles):
+        actividades_del_trabajo = {a["id"]: a for a in actividades_resp.data or []}
+        if any(d.actividad_id not in actividades_del_trabajo for d in payload.detalles):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Una de las actividades no pertenece a este trabajo.",
             )
+
+        try:
+            acumulados_resp = (
+                supabase.table("avances_diarios_detalle")
+                .select("actividad_id, cantidad")
+                .in_("actividad_id", [d.actividad_id for d in payload.detalles])
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al validar el avance acumulado.",
+            ) from exc
+
+        acumulado_por_actividad: dict[str, int] = {}
+        for fila in acumulados_resp.data or []:
+            acumulado_por_actividad[fila["actividad_id"]] = (
+                acumulado_por_actividad.get(fila["actividad_id"], 0) + fila["cantidad"]
+            )
+
+        for detalle in payload.detalles:
+            actividad = actividades_del_trabajo[detalle.actividad_id]
+            try:
+                qty_maximo = int(float(actividad["qty"]))
+            except (TypeError, ValueError):
+                continue  # qty no numerico (viene del CSV): no se puede validar tope
+
+            acumulado_previo = acumulado_por_actividad.get(detalle.actividad_id, 0)
+            if acumulado_previo + detalle.cantidad > qty_maximo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"La actividad '{actividad['actividad']}' ya tiene {acumulado_previo} de "
+                        f"{qty_maximo} reportado; no se puede superar el qty."
+                    ),
+                )
 
     try:
         creado = (

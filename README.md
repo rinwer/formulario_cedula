@@ -173,6 +173,11 @@ Abre `http://localhost:5173`:
    cada actividad, un cuadro de **comentario** y un boton **Guardar
    avance de hoy**. Cada guardado queda en un historial (fecha,
    comentario y detalle) que se muestra debajo de cada trabajo.
+   Una columna **Completado** compara el acumulado de todos los avances
+   guardados contra el `qty` de esa actividad: al alcanzarlo, se bloquea
+   el input (ya no se le puede seguir reportando avance) y se muestra en
+   verde. El backend valida lo mismo del lado del servidor (no se puede
+   superar el `qty` aunque se llame a la API directamente).
 
 El access token de la sesion de Supabase se manda como
 `Authorization: Bearer` en cada llamada al backend.
