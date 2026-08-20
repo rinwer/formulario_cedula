@@ -15,14 +15,25 @@ export type Usuario = {
   activo: boolean;
 };
 
-export type EstadoTrabajo = "pendiente" | "en_progreso" | "completado";
-
 export type Trabajo = {
   id: string;
-  titulo: string;
-  descripcion: string | null;
-  estado: EstadoTrabajo;
+  id_smp: string;
+  site: string;
+  zona: string;
   lider_id: string;
   lider_nombre: string | null;
   lider_email: string | null;
+};
+
+export type Actividad = {
+  id: string;
+  actividad: string | null;
+  tipificacion: string | null;
+  hw_actividad: string | null;
+  qty: string | null;
+  avance: string | null;
+};
+
+export type TrabajoConActividades = Trabajo & {
+  actividades: Actividad[];
 };

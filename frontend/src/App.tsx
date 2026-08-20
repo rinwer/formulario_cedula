@@ -2,6 +2,7 @@ import { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import AsignacionPanel from "./components/AsignacionPanel";
 import LoginPage from "./components/LoginPage";
+import MisTrabajosPanel from "./components/MisTrabajosPanel";
 import PerfilesPanel from "./components/PerfilesPanel";
 import { supabase } from "./lib/supabaseClient";
 import { Perfil } from "./types";
@@ -136,14 +137,7 @@ export default function App() {
             {tabActiva === "asignacion" && <AsignacionPanel accessToken={session.access_token} />}
           </>
         ) : (
-          <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
-            <h1 className="text-lg font-semibold text-slate-800 mb-2">
-              Bienvenido, {perfil.nombre_completo || perfil.email}
-            </h1>
-            <p className="text-sm text-slate-600">
-              Tu panel de lider de cuadrilla estara disponible proximamente.
-            </p>
-          </div>
+          <MisTrabajosPanel accessToken={session.access_token} />
         )}
       </main>
     </div>

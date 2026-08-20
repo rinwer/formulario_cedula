@@ -22,8 +22,9 @@ formulario-cedula/
     ├── src/App.tsx                     Login + shell con pestanas segun rol
     ├── src/lib/supabaseClient.ts       Cliente Supabase (anon key, solo Auth)
     ├── src/components/LoginPage.tsx
-    ├── src/components/PerfilesPanel.tsx    Pestana "Perfiles" (crear/listar/editar lideres)
-    ├── src/components/AsignacionPanel.tsx  Pestana "Asignacion" (trabajos por lider)
+    ├── src/components/PerfilesPanel.tsx     Pestana "Perfiles" (crear/listar/editar lideres)
+    ├── src/components/AsignacionPanel.tsx   Pestana "Asignacion" (trabajos + carga CSV)
+    ├── src/components/MisTrabajosPanel.tsx  Vista del lider_cuadrilla (sus trabajos + actividades)
     └── .env.example
 ```
 
@@ -96,19 +97,25 @@ Respuestas: `201` con el usuario creado, `401` sin token o token invalido,
 
 ### Endpoints de trabajos (pestana "Asignacion")
 
-Todos requieren `Authorization: Bearer <access_token>` de un administrador.
+Todos requieren `Authorization: Bearer <access_token>` de un administrador,
+salvo `GET /api/mis-trabajos` (cualquier usuario logueado).
 
-- `GET /api/admin/trabajos`: lista todos los trabajos con el nombre/correo
-  del lider asignado (via embedding de PostgREST sobre la FK
-  `trabajos.lider_id -> profiles.id`).
-- `POST /api/admin/trabajos`: crea un trabajo (`titulo`, `descripcion`
-  opcional, `lider_id`, `estado` inicial `pendiente`). Valida que
-  `lider_id` exista y tenga rol `lider_cuadrilla` (400 si no).
-- `PUT /api/admin/trabajos/{id}`: actualiza titulo, descripcion, lider
-  asignado y estado (`pendiente` | `en_progreso` | `completado`).
-
-Los campos de `trabajos` son minimos por ahora (titulo, descripcion,
-estado); se amplian cuando se definan los campos finales de cada trabajo.
+- `GET /api/admin/trabajos`: lista todos los trabajos (`id_smp`, `site`,
+  `zona`, lider asignado) via embedding de PostgREST sobre la FK
+  `trabajos.lider_id -> profiles.id`.
+- `POST /api/admin/trabajos` / `PUT /api/admin/trabajos/{id}`: crea o
+  actualiza un trabajo (`id_smp`, `site`, `zona`, `lider_id`). Valida que
+  `lider_id` exista, tenga rol `lider_cuadrilla` y este habilitado (400 si
+  no). `site` es unico: crear/editar con un site repetido devuelve `409`.
+- `POST /api/admin/actividades/importar` (`multipart/form-data`, campo
+  `archivo`): importa un CSV con columnas `SITE, ACTIVIDAD, TIPIFICACION,
+  HW-ACTIVIDAD, QTY, AVANCE`. Cada fila se liga al trabajo cuyo `site`
+  coincida (sin distinguir mayusculas/espacios). Por cada trabajo
+  afectado se reemplazan sus actividades anteriores por las del CSV
+  nuevo. Responde `{ actividades_cargadas, sitios_no_encontrados }`.
+- `GET /api/mis-trabajos`: trabajos asignados al usuario logueado (por
+  `lider_id`), cada uno con sus actividades importadas. Es lo que
+  consume el panel del `lider_cuadrilla`.
 
 ## 3. Frontend
 
@@ -144,15 +151,16 @@ Abre `http://localhost:5173`:
      existentes. Cada uno tiene boton **Editar** para cambiar nombre,
      correo, contrasena (opcional, se deja en blanco para no cambiarla),
      rol, y un check **Habilitado** para permitir o bloquear su login.
-   - Pestana **Asignacion**: formulario para crear un trabajo (titulo,
-     descripcion, lider de cuadrilla) y tabla con todos los trabajos
-     asignados, cada uno editable (titulo, descripcion, lider, estado).
-3. Si es `lider_cuadrilla`, ve una pantalla de bienvenida simple (su panel
-   propio, con sus trabajos asignados, se construye en un paso siguiente).
+   - Pestana **Asignacion**: formulario para crear un trabajo (ID/SMP,
+     site, zona, lider de cuadrilla — el selector solo muestra lideres
+     habilitados), un boton para cargar el CSV de actividades, y la
+     tabla de trabajos asignados (editable: ID/SMP, site, lider, zona).
+3. Si es `lider_cuadrilla`, ve sus trabajos asignados (ID/SMP, site,
+   zona) y, para cada uno, la tabla de actividades cargadas por CSV para
+   ese site.
 
 El access token de la sesion de Supabase se manda como
-`Authorization: Bearer` en cada llamada a `/api/me`, `/api/admin/usuarios`,
-`/api/admin/lideres` y `/api/admin/trabajos`.
+`Authorization: Bearer` en cada llamada al backend.
 
 ## Notas de seguridad
 

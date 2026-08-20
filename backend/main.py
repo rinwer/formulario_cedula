@@ -3,10 +3,12 @@ Backend FastAPI: autenticacion, roles y alta de usuarios.
 Unico responsable de hablar con Supabase con la service_role key.
 """
 
+import csv
+import io
 import os
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -173,29 +175,33 @@ class PerfilUpdate(BaseModel):
         return value
 
 
-ESTADOS_TRABAJO = ("pendiente", "en_progreso", "completado")
+def _campo_no_vacio(value: str, nombre_campo: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError(f"{nombre_campo} no puede estar vacio")
+    return value
 
 
 class TrabajoCreate(BaseModel):
-    titulo: str = Field(..., min_length=1)
-    descripcion: str | None = None
+    id_smp: str = Field(..., min_length=1)
+    site: str = Field(..., min_length=1)
+    zona: str = Field(..., min_length=1)
     lider_id: str
-    estado: str = "pendiente"
 
-    @field_validator("titulo")
+    @field_validator("id_smp")
     @classmethod
-    def titulo_no_vacio(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("El titulo no puede estar vacio")
-        return value
+    def id_smp_no_vacio(cls, value: str) -> str:
+        return _campo_no_vacio(value, "El ID / SMP")
 
-    @field_validator("estado")
+    @field_validator("site")
     @classmethod
-    def estado_valido(cls, value: str) -> str:
-        if value not in ESTADOS_TRABAJO:
-            raise ValueError(f"El estado debe ser uno de: {', '.join(ESTADOS_TRABAJO)}")
-        return value
+    def site_no_vacio(cls, value: str) -> str:
+        return _campo_no_vacio(value, "El site")
+
+    @field_validator("zona")
+    @classmethod
+    def zona_no_vacia(cls, value: str) -> str:
+        return _campo_no_vacio(value, "La zona")
 
 
 class TrabajoUpdate(TrabajoCreate):
@@ -204,21 +210,39 @@ class TrabajoUpdate(TrabajoCreate):
 
 class TrabajoOut(BaseModel):
     id: str
-    titulo: str
-    descripcion: str | None
-    estado: str
+    id_smp: str
+    site: str
+    zona: str
     lider_id: str
     lider_nombre: str | None = None
     lider_email: str | None = None
 
 
+class ActividadOut(BaseModel):
+    id: str
+    actividad: str | None
+    tipificacion: str | None
+    hw_actividad: str | None
+    qty: str | None
+    avance: str | None
+
+
+class TrabajoConActividadesOut(TrabajoOut):
+    actividades: list[ActividadOut] = []
+
+
+class ImportarActividadesResultado(BaseModel):
+    actividades_cargadas: int
+    sitios_no_encontrados: list[str]
+
+
 def obtener_perfil_lider(lider_id: str) -> dict:
-    """Valida que lider_id exista y tenga rol lider_cuadrilla; devuelve su
-    nombre/email para no tener que volver a consultarlos."""
+    """Valida que lider_id exista, tenga rol lider_cuadrilla y este
+    habilitado; devuelve su nombre/email para no volver a consultarlos."""
     try:
         perfil = (
             supabase.table("profiles")
-            .select("nombre_completo, email, role")
+            .select("nombre_completo, email, role, activo")
             .eq("id", lider_id)
             .single()
             .execute()
@@ -233,6 +257,12 @@ def obtener_perfil_lider(lider_id: str) -> dict:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El trabajo solo se puede asignar a un usuario con rol lider_cuadrilla.",
+        )
+
+    if not perfil.data["activo"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El lider de cuadrilla esta deshabilitado.",
         )
 
     return perfil.data
@@ -416,7 +446,7 @@ def listar_trabajos(
         response = (
             supabase.table("trabajos")
             .select(
-                "id, titulo, descripcion, estado, lider_id, "
+                "id, id_smp, site, zona, lider_id, "
                 "lider:profiles(nombre_completo, email)"
             )
             .order("created_at", desc=True)
@@ -447,9 +477,9 @@ def crear_trabajo(
             supabase.table("trabajos")
             .insert(
                 {
-                    "titulo": payload.titulo,
-                    "descripcion": payload.descripcion,
-                    "estado": payload.estado,
+                    "id_smp": payload.id_smp,
+                    "site": payload.site,
+                    "zona": payload.zona,
                     "lider_id": payload.lider_id,
                     "asignado_por": admin.id,
                 }
@@ -457,6 +487,12 @@ def crear_trabajo(
             .execute()
         )
     except Exception as exc:
+        mensaje = str(exc).lower()
+        if "duplicate" in mensaje or "trabajos_site_key" in mensaje:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe un trabajo asignado a ese site.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al crear el trabajo.",
@@ -487,9 +523,9 @@ def actualizar_trabajo(
             supabase.table("trabajos")
             .update(
                 {
-                    "titulo": payload.titulo,
-                    "descripcion": payload.descripcion,
-                    "estado": payload.estado,
+                    "id_smp": payload.id_smp,
+                    "site": payload.site,
+                    "zona": payload.zona,
                     "lider_id": payload.lider_id,
                 }
             )
@@ -497,6 +533,12 @@ def actualizar_trabajo(
             .execute()
         )
     except Exception as exc:
+        mensaje = str(exc).lower()
+        if "duplicate" in mensaje or "trabajos_site_key" in mensaje:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe un trabajo asignado a ese site.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al actualizar el trabajo.",
@@ -512,3 +554,141 @@ def actualizar_trabajo(
     fila["lider_nombre"] = lider["nombre_completo"]
     fila["lider_email"] = lider["email"]
     return fila
+
+
+COLUMNAS_CSV_ACTIVIDADES = ("SITE", "ACTIVIDAD", "TIPIFICACION", "HW-ACTIVIDAD", "QTY", "AVANCE")
+
+
+@app.post("/api/admin/actividades/importar", response_model=ImportarActividadesResultado)
+def importar_actividades(
+    archivo: UploadFile = File(...),
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    """Importa un CSV con columnas SITE, ACTIVIDAD, TIPIFICACION,
+    HW-ACTIVIDAD, QTY, AVANCE. Cada fila se liga al trabajo cuyo site
+    coincida (sin distinguir mayusculas ni espacios de mas). Por cada
+    trabajo afectado se reemplazan sus actividades anteriores por las del
+    CSV nuevo."""
+    try:
+        texto = archivo.file.read().decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe ser un CSV en UTF-8.",
+        ) from exc
+
+    lector = csv.DictReader(io.StringIO(texto))
+    encabezados = {(c or "").strip().upper() for c in (lector.fieldnames or [])}
+    if not set(COLUMNAS_CSV_ACTIVIDADES).issubset(encabezados):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El CSV debe tener las columnas: {', '.join(COLUMNAS_CSV_ACTIVIDADES)}.",
+        )
+
+    try:
+        trabajos_resp = supabase.table("trabajos").select("id, site").execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los trabajos existentes.",
+        ) from exc
+
+    mapa_sites = {
+        (t["site"] or "").strip().lower(): t["id"] for t in trabajos_resp.data or [] if t.get("site")
+    }
+
+    filas_por_trabajo: dict[str, list[dict]] = {}
+    sitios_no_encontrados: list[str] = []
+
+    for fila in lector:
+        normalizada = {(k or "").strip().upper(): (v or "").strip() for k, v in fila.items()}
+        site = normalizada.get("SITE", "")
+        if not site:
+            continue
+
+        trabajo_id = mapa_sites.get(site.lower())
+        if not trabajo_id:
+            if site not in sitios_no_encontrados:
+                sitios_no_encontrados.append(site)
+            continue
+
+        filas_por_trabajo.setdefault(trabajo_id, []).append(
+            {
+                "trabajo_id": trabajo_id,
+                "actividad": normalizada.get("ACTIVIDAD") or None,
+                "tipificacion": normalizada.get("TIPIFICACION") or None,
+                "hw_actividad": normalizada.get("HW-ACTIVIDAD") or None,
+                "qty": normalizada.get("QTY") or None,
+                "avance": normalizada.get("AVANCE") or None,
+            }
+        )
+
+    trabajo_ids_afectados = list(filas_por_trabajo.keys())
+    actividades_cargadas = 0
+
+    if trabajo_ids_afectados:
+        try:
+            supabase.table("actividades").delete().in_("trabajo_id", trabajo_ids_afectados).execute()
+            filas_a_insertar = [
+                fila for filas in filas_por_trabajo.values() for fila in filas
+            ]
+            supabase.table("actividades").insert(filas_a_insertar).execute()
+            actividades_cargadas = len(filas_a_insertar)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al guardar las actividades.",
+            ) from exc
+
+    return {
+        "actividades_cargadas": actividades_cargadas,
+        "sitios_no_encontrados": sitios_no_encontrados,
+    }
+
+
+@app.get("/api/mis-trabajos", response_model=list[TrabajoConActividadesOut])
+def listar_mis_trabajos(
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> list[dict]:
+    """Trabajos asignados al usuario logueado (para el panel del
+    lider_cuadrilla), cada uno con sus actividades importadas por CSV."""
+    try:
+        trabajos_resp = (
+            supabase.table("trabajos")
+            .select("id, id_smp, site, zona, lider_id")
+            .eq("lider_id", usuario.id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener tus trabajos.",
+        ) from exc
+
+    trabajos = trabajos_resp.data or []
+    if not trabajos:
+        return []
+
+    trabajo_ids = [t["id"] for t in trabajos]
+    try:
+        actividades_resp = (
+            supabase.table("actividades")
+            .select("id, trabajo_id, actividad, tipificacion, hw_actividad, qty, avance")
+            .in_("trabajo_id", trabajo_ids)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener las actividades.",
+        ) from exc
+
+    actividades_por_trabajo: dict[str, list[dict]] = {}
+    for actividad in actividades_resp.data or []:
+        actividades_por_trabajo.setdefault(actividad["trabajo_id"], []).append(actividad)
+
+    for trabajo in trabajos:
+        trabajo["actividades"] = actividades_por_trabajo.get(trabajo["id"], [])
+
+    return trabajos

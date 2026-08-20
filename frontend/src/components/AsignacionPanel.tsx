@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useState } from "react";
-import { EstadoTrabajo, Trabajo, Usuario } from "../types";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { Trabajo, Usuario } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -11,18 +11,6 @@ type PopupState = {
 
 const initialPopup: PopupState = { visible: false, type: "success", message: "" };
 
-const ESTADO_LABEL: Record<EstadoTrabajo, string> = {
-  pendiente: "Pendiente",
-  en_progreso: "En progreso",
-  completado: "Completado",
-};
-
-const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
-  pendiente: "bg-amber-100 text-amber-700",
-  en_progreso: "bg-blue-100 text-blue-700",
-  completado: "bg-emerald-100 text-emerald-700",
-};
-
 type Props = {
   accessToken: string;
 };
@@ -30,10 +18,13 @@ type Props = {
 export default function AsignacionPanel({ accessToken }: Props) {
   const [lideres, setLideres] = useState<Usuario[]>([]);
 
-  const [titulo, setTitulo] = useState("");
-  const [descripcion, setDescripcion] = useState("");
+  const [idSmp, setIdSmp] = useState("");
+  const [site, setSite] = useState("");
+  const [zona, setZona] = useState("");
   const [liderId, setLiderId] = useState("");
-  const [errores, setErrores] = useState<{ titulo?: string; lider?: string }>({});
+  const [errores, setErrores] = useState<{ idSmp?: string; site?: string; zona?: string; lider?: string }>(
+    {}
+  );
   const [guardando, setGuardando] = useState(false);
   const [popup, setPopup] = useState<PopupState>(initialPopup);
 
@@ -42,14 +33,20 @@ export default function AsignacionPanel({ accessToken }: Props) {
   const [errorLista, setErrorLista] = useState<string | null>(null);
 
   const [idEditando, setIdEditando] = useState<string | null>(null);
-  const [tituloEditado, setTituloEditado] = useState("");
-  const [descripcionEditada, setDescripcionEditada] = useState("");
+  const [idSmpEditado, setIdSmpEditado] = useState("");
+  const [siteEditado, setSiteEditado] = useState("");
+  const [zonaEditada, setZonaEditada] = useState("");
   const [liderEditado, setLiderEditado] = useState("");
-  const [estadoEditado, setEstadoEditado] = useState<EstadoTrabajo>("pendiente");
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
+  const inputArchivoRef = useRef<HTMLInputElement>(null);
+  const [subiendoCsv, setSubiendoCsv] = useState(false);
+  const [resultadoCsv, setResultadoCsv] = useState<string | null>(null);
+
   const cerrarPopup = () => setPopup(initialPopup);
+
+  const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
 
   const cargarLideres = async () => {
     try {
@@ -58,10 +55,10 @@ export default function AsignacionPanel({ accessToken }: Props) {
       });
       if (!res.ok) throw new Error();
       const data: Usuario[] = await res.json();
-      setLideres(data.filter((u) => u.role === "lider_cuadrilla"));
+      setLideres(data);
     } catch {
       // La lista de trabajos igual muestra el nombre del lider; si esto
-      // falla solo se pierde el selector para crear trabajos nuevos.
+      // falla solo se pierde el selector para crear/editar trabajos.
     }
   };
 
@@ -90,7 +87,9 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
   const validar = () => {
     const nuevosErrores: typeof errores = {};
-    if (!titulo.trim()) nuevosErrores.titulo = "El titulo es obligatorio.";
+    if (!idSmp.trim()) nuevosErrores.idSmp = "El ID / SMP es obligatorio.";
+    if (!site.trim()) nuevosErrores.site = "El site es obligatorio.";
+    if (!zona.trim()) nuevosErrores.zona = "La zona es obligatoria.";
     if (!liderId) nuevosErrores.lider = "Selecciona un lider de cuadrilla.";
     return nuevosErrores;
   };
@@ -114,17 +113,18 @@ export default function AsignacionPanel({ accessToken }: Props) {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          titulo: titulo.trim(),
-          descripcion: descripcion.trim() || null,
+          id_smp: idSmp.trim(),
+          site: site.trim(),
+          zona: zona.trim(),
           lider_id: liderId,
-          estado: "pendiente",
         }),
       });
 
       if (res.status === 201) {
         setPopup({ visible: true, type: "success", message: "El trabajo se asigno con exito." });
-        setTitulo("");
-        setDescripcion("");
+        setIdSmp("");
+        setSite("");
+        setZona("");
         setLiderId("");
         cargarTrabajos();
       } else {
@@ -148,10 +148,10 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
   const iniciarEdicion = (trabajo: Trabajo) => {
     setIdEditando(trabajo.id);
-    setTituloEditado(trabajo.titulo);
-    setDescripcionEditada(trabajo.descripcion ?? "");
+    setIdSmpEditado(trabajo.id_smp);
+    setSiteEditado(trabajo.site);
+    setZonaEditada(trabajo.zona);
     setLiderEditado(trabajo.lider_id);
-    setEstadoEditado(trabajo.estado);
     setErrorEdicion(null);
   };
 
@@ -161,7 +161,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
   };
 
   const guardarEdicion = async (trabajoId: string) => {
-    if (!tituloEditado.trim() || !liderEditado) return;
+    if (!idSmpEditado.trim() || !siteEditado.trim() || !zonaEditada.trim() || !liderEditado) return;
     setErrorEdicion(null);
     setGuardandoEdicion(true);
     try {
@@ -172,10 +172,10 @@ export default function AsignacionPanel({ accessToken }: Props) {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          titulo: tituloEditado.trim(),
-          descripcion: descripcionEditada.trim() || null,
+          id_smp: idSmpEditado.trim(),
+          site: siteEditado.trim(),
+          zona: zonaEditada.trim(),
           lider_id: liderEditado,
-          estado: estadoEditado,
         }),
       });
 
@@ -194,6 +194,43 @@ export default function AsignacionPanel({ accessToken }: Props) {
     }
   };
 
+  const handleArchivoSeleccionado = async (e: ChangeEvent<HTMLInputElement>) => {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+
+    setResultadoCsv(null);
+    setSubiendoCsv(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("archivo", archivo);
+
+      const res = await fetch(`${API_URL}/api/admin/actividades/importar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok) {
+        const sinCoincidencia: string[] = data?.sitios_no_encontrados ?? [];
+        let mensaje = `Se cargaron ${data?.actividades_cargadas ?? 0} actividad(es).`;
+        if (sinCoincidencia.length > 0) {
+          mensaje += ` No se encontro asignacion para estos sites: ${sinCoincidencia.join(", ")}.`;
+        }
+        setResultadoCsv(mensaje);
+      } else {
+        setResultadoCsv(data?.detail ?? "Ocurrio un error al cargar el archivo.");
+      }
+    } catch {
+      setResultadoCsv("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setSubiendoCsv(false);
+      if (inputArchivoRef.current) inputArchivoRef.current.value = "";
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
@@ -201,18 +238,51 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
           <div>
-            <label htmlFor="titulo" className="block text-sm font-medium text-slate-700 mb-1">
-              Titulo
+            <label htmlFor="id_smp" className="block text-sm font-medium text-slate-700 mb-1">
+              ID / SMP
             </label>
             <input
-              id="titulo"
+              id="id_smp"
               type="text"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
+              value={idSmp}
+              onChange={(e) => setIdSmp(e.target.value)}
               className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ej: Revision de red en barrio X"
+              placeholder="Ej: SMP-00123"
             />
-            {errores.titulo && <p className="text-sm text-red-600 mt-1">{errores.titulo}</p>}
+            {errores.idSmp && <p className="text-sm text-red-600 mt-1">{errores.idSmp}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="site" className="block text-sm font-medium text-slate-700 mb-1">
+              Site
+            </label>
+            <input
+              id="site"
+              type="text"
+              value={site}
+              onChange={(e) => setSite(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Ej: BOG-0045"
+            />
+            {errores.site && <p className="text-sm text-red-600 mt-1">{errores.site}</p>}
+            <p className="text-xs text-slate-500 mt-1">
+              Debe coincidir con la columna SITE del CSV de actividades.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="zona" className="block text-sm font-medium text-slate-700 mb-1">
+              Zona
+            </label>
+            <input
+              id="zona"
+              type="text"
+              value={zona}
+              onChange={(e) => setZona(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Ej: Norte"
+            />
+            {errores.zona && <p className="text-sm text-red-600 mt-1">{errores.zona}</p>}
           </div>
 
           <div>
@@ -226,32 +296,18 @@ export default function AsignacionPanel({ accessToken }: Props) {
               className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Selecciona un lider</option>
-              {lideres.map((lider) => (
+              {lideresHabilitados.map((lider) => (
                 <option key={lider.id} value={lider.id}>
                   {lider.nombre_completo}
                 </option>
               ))}
             </select>
             {errores.lider && <p className="text-sm text-red-600 mt-1">{errores.lider}</p>}
-            {lideres.length === 0 && (
+            {lideresHabilitados.length === 0 && (
               <p className="text-xs text-slate-500 mt-1">
-                Todavia no hay lideres de cuadrilla creados en la pestana Perfiles.
+                No hay lideres de cuadrilla habilitados. Crea o habilita uno en la pestana Perfiles.
               </p>
             )}
-          </div>
-
-          <div className="sm:col-span-2">
-            <label htmlFor="descripcion" className="block text-sm font-medium text-slate-700 mb-1">
-              Descripcion
-            </label>
-            <textarea
-              id="descripcion"
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              rows={3}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Detalle del trabajo (opcional)"
-            />
           </div>
 
           <div className="sm:col-span-2">
@@ -264,6 +320,26 @@ export default function AsignacionPanel({ accessToken }: Props) {
             </button>
           </div>
         </form>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
+        <h2 className="text-lg font-semibold text-slate-800 mb-2">Cargar actividades (CSV)</h2>
+        <p className="text-sm text-slate-600 mb-4">
+          Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE. El SITE debe
+          coincidir con el de una asignacion existente.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            ref={inputArchivoRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={handleArchivoSeleccionado}
+            disabled={subiendoCsv}
+            className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-60"
+          />
+          {subiendoCsv && <span className="text-sm text-slate-500">Cargando...</span>}
+        </div>
+        {resultadoCsv && <p className="text-sm text-slate-700 mt-3">{resultadoCsv}</p>}
       </div>
 
       <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
@@ -289,9 +365,10 @@ export default function AsignacionPanel({ accessToken }: Props) {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Titulo / descripcion</th>
-                  <th className="py-2 pr-4 font-medium">Lider</th>
-                  <th className="py-2 pr-4 font-medium">Estado</th>
+                  <th className="py-2 pr-4 font-medium">ID / SMP</th>
+                  <th className="py-2 pr-4 font-medium">Site</th>
+                  <th className="py-2 pr-4 font-medium">Lider de cuadrilla</th>
+                  <th className="py-2 pr-4 font-medium">Zona</th>
                   <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
@@ -302,29 +379,27 @@ export default function AsignacionPanel({ accessToken }: Props) {
                     <tr key={trabajo.id} className="border-b border-slate-100 last:border-0 align-top">
                       <td className="py-2 pr-4 text-slate-700">
                         {editando ? (
-                          <div className="space-y-1 min-w-[200px]">
-                            <input
-                              type="text"
-                              value={tituloEditado}
-                              onChange={(e) => setTituloEditado(e.target.value)}
-                              className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              autoFocus
-                            />
-                            <textarea
-                              value={descripcionEditada}
-                              onChange={(e) => setDescripcionEditada(e.target.value)}
-                              rows={2}
-                              className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="Descripcion (opcional)"
-                            />
-                          </div>
+                          <input
+                            type="text"
+                            value={idSmpEditado}
+                            onChange={(e) => setIdSmpEditado(e.target.value)}
+                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
                         ) : (
-                          <>
-                            <p className="font-medium">{trabajo.titulo}</p>
-                            {trabajo.descripcion && (
-                              <p className="text-slate-500 text-xs mt-0.5">{trabajo.descripcion}</p>
-                            )}
-                          </>
+                          trabajo.id_smp
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {editando ? (
+                          <input
+                            type="text"
+                            value={siteEditado}
+                            onChange={(e) => setSiteEditado(e.target.value)}
+                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        ) : (
+                          trabajo.site
                         )}
                       </td>
                       <td className="py-2 pr-4 text-slate-700">
@@ -334,7 +409,12 @@ export default function AsignacionPanel({ accessToken }: Props) {
                             onChange={(e) => setLiderEditado(e.target.value)}
                             className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
-                            {lideres.map((lider) => (
+                            {!lideresHabilitados.some((l) => l.id === trabajo.lider_id) && (
+                              <option value={trabajo.lider_id}>
+                                {trabajo.lider_nombre ?? trabajo.lider_email} (deshabilitado)
+                              </option>
+                            )}
+                            {lideresHabilitados.map((lider) => (
                               <option key={lider.id} value={lider.id}>
                                 {lider.nombre_completo}
                               </option>
@@ -344,26 +424,16 @@ export default function AsignacionPanel({ accessToken }: Props) {
                           trabajo.lider_nombre ?? trabajo.lider_email ?? "—"
                         )}
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-4 text-slate-700">
                         {editando ? (
-                          <select
-                            value={estadoEditado}
-                            onChange={(e) => setEstadoEditado(e.target.value as EstadoTrabajo)}
-                            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="pendiente">Pendiente</option>
-                            <option value="en_progreso">En progreso</option>
-                            <option value="completado">Completado</option>
-                          </select>
+                          <input
+                            type="text"
+                            value={zonaEditada}
+                            onChange={(e) => setZonaEditada(e.target.value)}
+                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
                         ) : (
-                          <span
-                            className={
-                              "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
-                              ESTADO_BADGE[trabajo.estado]
-                            }
-                          >
-                            {ESTADO_LABEL[trabajo.estado]}
-                          </span>
+                          trabajo.zona
                         )}
                       </td>
                       <td className="py-2 pr-4 text-right whitespace-nowrap">
@@ -378,7 +448,11 @@ export default function AsignacionPanel({ accessToken }: Props) {
                               <button
                                 onClick={() => guardarEdicion(trabajo.id)}
                                 disabled={
-                                  guardandoEdicion || !tituloEditado.trim() || !liderEditado
+                                  guardandoEdicion ||
+                                  !idSmpEditado.trim() ||
+                                  !siteEditado.trim() ||
+                                  !zonaEditada.trim() ||
+                                  !liderEditado
                                 }
                                 className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 px-3 py-1 rounded-md"
                               >

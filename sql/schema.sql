@@ -92,22 +92,43 @@ alter table public.profiles enable row level security;
 -- ---------------------------------------------------------
 -- 4. Tabla trabajos (asignacion de trabajos a lideres de cuadrilla)
 -- ---------------------------------------------------------
--- Campos minimos por ahora (titulo, descripcion, estado); se amplia mas
--- adelante cuando se definan los campos finales de cada trabajo.
+-- Campos: id_smp (identificador de la orden/SMP), site, zona y el lider
+-- de cuadrilla responsable. "site" es unico porque las actividades del
+-- CSV (tabla actividades) se enlazan por nombre de site.
 
 create table if not exists public.trabajos (
   id uuid primary key default gen_random_uuid(),
-  titulo text not null check (length(trim(titulo)) > 0),
-  descripcion text,
-  estado text not null default 'pendiente'
-    check (estado in ('pendiente', 'en_progreso', 'completado')),
+  id_smp text not null check (length(trim(id_smp)) > 0),
+  site text not null unique check (length(trim(site)) > 0),
+  zona text not null check (length(trim(zona)) > 0),
   lider_id uuid not null references public.profiles (id) on delete cascade,
   asignado_por uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+-- Por si la tabla ya existia con el esquema anterior (titulo,
+-- descripcion, estado): se agregan las columnas nuevas y se quitan las
+-- viejas para dejar el esquema al dia de forma idempotente.
+alter table public.trabajos add column if not exists id_smp text;
+alter table public.trabajos add column if not exists site text;
+alter table public.trabajos add column if not exists zona text;
+alter table public.trabajos drop column if exists titulo;
+alter table public.trabajos drop column if exists descripcion;
+alter table public.trabajos drop column if exists estado;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'trabajos_site_key'
+  ) then
+    alter table public.trabajos add constraint trabajos_site_key unique (site);
+  end if;
+end $$;
+
 comment on table public.trabajos is 'Trabajos asignados por un administrador a un lider_cuadrilla.';
+comment on column public.trabajos.id_smp is 'Identificador de la orden/SMP del trabajo.';
+comment on column public.trabajos.site is 'Nombre del site; debe coincidir con la columna SITE del CSV de actividades.';
 comment on column public.trabajos.lider_id is 'profiles.id del lider_cuadrilla responsable del trabajo.';
 comment on column public.trabajos.asignado_por is 'profiles.id del administrador que creo/asigno el trabajo.';
 
@@ -136,7 +157,31 @@ create trigger set_trabajos_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------
--- 5. Bootstrap del primer administrador (ejecutar una sola vez)
+-- 5. Tabla actividades (importadas por CSV, ligadas a un trabajo por site)
+-- ---------------------------------------------------------
+-- El CSV trae: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE.
+-- El backend resuelve SITE -> trabajos.id (coincidencia exacta, sin
+-- distinguir mayusculas/minusculas ni espacios de mas) antes de insertar.
+
+create table if not exists public.actividades (
+  id uuid primary key default gen_random_uuid(),
+  trabajo_id uuid not null references public.trabajos (id) on delete cascade,
+  actividad text,
+  tipificacion text,
+  hw_actividad text,
+  qty text,
+  avance text,
+  created_at timestamptz not null default now()
+);
+
+comment on table public.actividades is 'Actividades por site importadas desde CSV, ligadas a trabajos.id.';
+
+create index if not exists idx_actividades_trabajo_id on public.actividades (trabajo_id);
+
+alter table public.actividades enable row level security;
+
+-- ---------------------------------------------------------
+-- 6. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------
 -- No hay registro publico, asi que el primer administrador se crea a
 -- mano desde el Supabase Dashboard > Authentication > Users > Add user.
