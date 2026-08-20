@@ -447,7 +447,7 @@ def listar_trabajos(
             supabase.table("trabajos")
             .select(
                 "id, id_smp, site, zona, lider_id, "
-                "lider:profiles(nombre_completo, email)"
+                "lider:profiles!lider_id(nombre_completo, email)"
             )
             .order("created_at", desc=True)
             .execute()
@@ -577,12 +577,22 @@ def importar_actividades(
             detail="El archivo debe ser un CSV en UTF-8.",
         ) from exc
 
-    lector = csv.DictReader(io.StringIO(texto))
+    # Excel en espanol suele exportar CSV delimitado por ";" en vez de ",".
+    # Se detecta el delimitador real en vez de asumir coma.
+    try:
+        dialecto = csv.Sniffer().sniff(texto[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialecto = csv.excel
+
+    lector = csv.DictReader(io.StringIO(texto), dialect=dialecto)
     encabezados = {(c or "").strip().upper() for c in (lector.fieldnames or [])}
     if not set(COLUMNAS_CSV_ACTIVIDADES).issubset(encabezados):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El CSV debe tener las columnas: {', '.join(COLUMNAS_CSV_ACTIVIDADES)}.",
+            detail=(
+                f"El CSV debe tener las columnas: {', '.join(COLUMNAS_CSV_ACTIVIDADES)}. "
+                f"Columnas encontradas: {', '.join(sorted(encabezados)) or 'ninguna'}."
+            ),
         )
 
     try:
