@@ -177,7 +177,13 @@ Abre `http://localhost:5173`:
    guardados contra el `qty` de esa actividad: al alcanzarlo, se bloquea
    el input (ya no se le puede seguir reportando avance) y se muestra en
    verde. El backend valida lo mismo del lado del servidor (no se puede
-   superar el `qty` aunque se llame a la API directamente).
+   superar el `qty` aunque se llame a la API directamente). A la
+   izquierda de la tabla hay un recuadro **"Avance por actividad"** que
+   agrupa las filas por el nombre de la columna Actividad (ej. "1. PRE",
+   "2. Instalacion") y muestra el % de avance de cada grupo (suma de
+   acumulado / suma de qty). El detalle del historial identifica cada
+   fila por su **HW-Actividad** (mas especifico que el nombre de
+   Actividad, que se repite entre filas).
 
 El access token de la sesion de Supabase se manda como
 `Authorization: Bearer` en cada llamada al backend.
