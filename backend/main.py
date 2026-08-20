@@ -236,6 +236,62 @@ class ImportarActividadesResultado(BaseModel):
     sitios_no_encontrados: list[str]
 
 
+class AvanceDetalleIn(BaseModel):
+    actividad_id: str
+    cantidad: int = Field(..., ge=0)
+
+
+class AvanceDiarioCreate(BaseModel):
+    comentario: str | None = None
+    detalles: list[AvanceDetalleIn] = []
+
+    @field_validator("comentario")
+    @classmethod
+    def comentario_limpio(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class AvanceDetalleOut(BaseModel):
+    actividad_id: str
+    cantidad: int
+
+
+class AvanceDiarioOut(BaseModel):
+    id: str
+    trabajo_id: str
+    comentario: str | None
+    created_at: str
+    detalles: list[AvanceDetalleOut] = []
+
+
+def obtener_trabajo_del_lider(trabajo_id: str, lider_id: str) -> dict:
+    """Valida que trabajo_id exista y este asignado a lider_id."""
+    try:
+        trabajo = (
+            supabase.table("trabajos")
+            .select("id, lider_id")
+            .eq("id", trabajo_id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro el trabajo.",
+        ) from exc
+
+    if trabajo.data["lider_id"] != lider_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ese trabajo no esta asignado a tu usuario.",
+        )
+
+    return trabajo.data
+
+
 def obtener_perfil_lider(lider_id: str) -> dict:
     """Valida que lider_id exista, tenga rol lider_cuadrilla y este
     habilitado; devuelve su nombre/email para no volver a consultarlos."""
@@ -717,3 +773,154 @@ def listar_mis_trabajos(
         trabajo["actividades"] = actividades_por_trabajo.get(trabajo["id"], [])
 
     return trabajos
+
+
+@app.post(
+    "/api/mis-trabajos/{trabajo_id}/avances",
+    response_model=AvanceDiarioOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def registrar_avance_diario(
+    trabajo_id: str,
+    payload: AvanceDiarioCreate,
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> dict:
+    """Guarda el avance del dia de un lider_cuadrilla para uno de sus
+    trabajos: un comentario general y/o cuanto avanzo en cada actividad.
+    Cada guardado crea un registro nuevo (no sobreescribe el anterior),
+    para llevar la bitacora dia a dia."""
+    obtener_trabajo_del_lider(trabajo_id, usuario.id)
+
+    if not payload.comentario and not payload.detalles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ingresa al menos un avance o un comentario.",
+        )
+
+    if payload.detalles:
+        try:
+            actividades_resp = (
+                supabase.table("actividades")
+                .select("id")
+                .eq("trabajo_id", trabajo_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al validar las actividades.",
+            ) from exc
+
+        ids_validos = {a["id"] for a in actividades_resp.data or []}
+        if any(d.actividad_id not in ids_validos for d in payload.detalles):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Una de las actividades no pertenece a este trabajo.",
+            )
+
+    try:
+        creado = (
+            supabase.table("avances_diarios")
+            .insert(
+                {
+                    "trabajo_id": trabajo_id,
+                    "lider_id": usuario.id,
+                    "comentario": payload.comentario,
+                }
+            )
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al guardar el avance.",
+        ) from exc
+
+    if not creado.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo confirmar el guardado del avance.",
+        )
+
+    avance_diario = creado.data[0]
+
+    detalles_guardados: list[dict] = []
+    if payload.detalles:
+        try:
+            detalle_resp = (
+                supabase.table("avances_diarios_detalle")
+                .insert(
+                    [
+                        {
+                            "avance_diario_id": avance_diario["id"],
+                            "actividad_id": detalle.actividad_id,
+                            "cantidad": detalle.cantidad,
+                        }
+                        for detalle in payload.detalles
+                    ]
+                )
+                .execute()
+            )
+            detalles_guardados = detalle_resp.data or []
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al guardar el detalle del avance.",
+            ) from exc
+
+    avance_diario["detalles"] = detalles_guardados
+    return avance_diario
+
+
+@app.get(
+    "/api/mis-trabajos/{trabajo_id}/avances",
+    response_model=list[AvanceDiarioOut],
+)
+def listar_avances_diarios(
+    trabajo_id: str,
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> list[dict]:
+    """Historial de avances diarios guardados para un trabajo (mas
+    recientes primero)."""
+    obtener_trabajo_del_lider(trabajo_id, usuario.id)
+
+    try:
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select("id, trabajo_id, comentario, created_at")
+            .eq("trabajo_id", trabajo_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances.",
+        ) from exc
+
+    avances = avances_resp.data or []
+    if not avances:
+        return []
+
+    avance_ids = [a["id"] for a in avances]
+    try:
+        detalles_resp = (
+            supabase.table("avances_diarios_detalle")
+            .select("avance_diario_id, actividad_id, cantidad")
+            .in_("avance_diario_id", avance_ids)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el detalle de los avances.",
+        ) from exc
+
+    detalles_por_avance: dict[str, list[dict]] = {}
+    for detalle in detalles_resp.data or []:
+        detalles_por_avance.setdefault(detalle["avance_diario_id"], []).append(detalle)
+
+    for avance in avances:
+        avance["detalles"] = detalles_por_avance.get(avance["id"], [])
+
+    return avances

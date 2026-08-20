@@ -181,7 +181,42 @@ create index if not exists idx_actividades_trabajo_id on public.actividades (tra
 alter table public.actividades enable row level security;
 
 -- ---------------------------------------------------------
--- 6. Bootstrap del primer administrador (ejecutar una sola vez)
+-- 6. Tabla avances_diarios (bitacora diaria del lider de cuadrilla)
+-- ---------------------------------------------------------
+-- Cada vez que el lider guarda su avance del dia se crea UNA fila en
+-- avances_diarios (el comentario general) y una fila en
+-- avances_diarios_detalle por cada actividad a la que le reporto avance
+-- ese dia. Es un historial append-only: nunca se sobreescribe, cada
+-- guardado agrega un registro nuevo.
+
+create table if not exists public.avances_diarios (
+  id uuid primary key default gen_random_uuid(),
+  trabajo_id uuid not null references public.trabajos (id) on delete cascade,
+  lider_id uuid not null references public.profiles (id) on delete cascade,
+  comentario text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.avances_diarios_detalle (
+  id uuid primary key default gen_random_uuid(),
+  avance_diario_id uuid not null references public.avances_diarios (id) on delete cascade,
+  actividad_id uuid not null references public.actividades (id) on delete cascade,
+  cantidad integer not null check (cantidad >= 0),
+  created_at timestamptz not null default now()
+);
+
+comment on table public.avances_diarios is 'Un registro por cada guardado diario de avance de un lider_cuadrilla.';
+comment on table public.avances_diarios_detalle is 'Cantidad avanzada ese dia por actividad, ligada a un avance_diario.';
+
+create index if not exists idx_avances_diarios_trabajo_id on public.avances_diarios (trabajo_id);
+create index if not exists idx_avances_detalle_avance_id on public.avances_diarios_detalle (avance_diario_id);
+create index if not exists idx_avances_detalle_actividad_id on public.avances_diarios_detalle (actividad_id);
+
+alter table public.avances_diarios enable row level security;
+alter table public.avances_diarios_detalle enable row level security;
+
+-- ---------------------------------------------------------
+-- 7. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------
 -- No hay registro publico, asi que el primer administrador se crea a
 -- mano desde el Supabase Dashboard > Authentication > Users > Add user.

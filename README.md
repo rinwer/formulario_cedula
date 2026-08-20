@@ -98,7 +98,8 @@ Respuestas: `201` con el usuario creado, `401` sin token o token invalido,
 ### Endpoints de trabajos (pestana "Asignacion")
 
 Todos requieren `Authorization: Bearer <access_token>` de un administrador,
-salvo `GET /api/mis-trabajos` (cualquier usuario logueado).
+salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances`
+(cualquier usuario logueado, pero solo sobre trabajos asignados a el mismo).
 
 - `GET /api/admin/trabajos`: lista todos los trabajos (`id_smp`, `site`,
   `zona`, lider asignado) via embedding de PostgREST sobre la FK
@@ -119,6 +120,14 @@ salvo `GET /api/mis-trabajos` (cualquier usuario logueado).
 - `GET /api/mis-trabajos`: trabajos asignados al usuario logueado (por
   `lider_id`), cada uno con sus actividades importadas. Es lo que
   consume el panel del `lider_cuadrilla`.
+- `POST /api/mis-trabajos/{trabajo_id}/avances`: guarda el avance diario
+  del lider (`comentario` y/o `detalles: [{actividad_id, cantidad}]`).
+  Valida que el trabajo sea suyo y que cada `actividad_id` pertenezca a
+  ese trabajo. Cada guardado crea un registro nuevo (tablas
+  `avances_diarios` + `avances_diarios_detalle`); nunca sobreescribe el
+  anterior, para llevar una bitacora dia a dia.
+- `GET /api/mis-trabajos/{trabajo_id}/avances`: historial de avances
+  guardados para ese trabajo (mas recientes primero).
 
 ## 3. Frontend
 
@@ -159,8 +168,11 @@ Abre `http://localhost:5173`:
      habilitados), un boton para cargar el CSV de actividades, y la
      tabla de trabajos asignados (editable: ID/SMP, site, lider, zona).
 3. Si es `lider_cuadrilla`, ve sus trabajos asignados (ID/SMP, site,
-   zona) y, para cada uno, la tabla de actividades cargadas por CSV para
-   ese site.
+   zona) y, para cada uno, la tabla de actividades cargadas por CSV con
+   una columna extra **Avance de hoy** para escribir cuanto avanzo en
+   cada actividad, un cuadro de **comentario** y un boton **Guardar
+   avance de hoy**. Cada guardado queda en un historial (fecha,
+   comentario y detalle) que se muestra debajo de cada trabajo.
 
 El access token de la sesion de Supabase se manda como
 `Authorization: Bearer` en cada llamada al backend.

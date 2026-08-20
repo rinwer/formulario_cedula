@@ -37,3 +37,16 @@ export type Actividad = {
 export type TrabajoConActividades = Trabajo & {
   actividades: Actividad[];
 };
+
+export type AvanceDetalle = {
+  actividad_id: string;
+  cantidad: number;
+};
+
+export type AvanceDiario = {
+  id: string;
+  trabajo_id: string;
+  comentario: string | null;
+  created_at: string;
+  detalles: AvanceDetalle[];
+};
