@@ -42,7 +42,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const [subiendoCsv, setSubiendoCsv] = useState(false);
-  const [resultadoCsv, setResultadoCsv] = useState<string | null>(null);
 
   const cerrarPopup = () => setPopup(initialPopup);
 
@@ -194,11 +193,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
     }
   };
 
-  const handleArchivoSeleccionado = async (e: ChangeEvent<HTMLInputElement>) => {
-    const archivo = e.target.files?.[0];
-    if (!archivo) return;
-
-    setResultadoCsv(null);
+  const subirCsv = async (archivo: File) => {
     setSubiendoCsv(true);
 
     try {
@@ -219,17 +214,32 @@ export default function AsignacionPanel({ accessToken }: Props) {
         if (sinCoincidencia.length > 0) {
           mensaje += ` No se encontro asignacion para estos sites: ${sinCoincidencia.join(", ")}.`;
         }
-        setResultadoCsv(mensaje);
+        setPopup({ visible: true, type: "success", message: mensaje });
       } else {
-        setResultadoCsv(data?.detail ?? "Ocurrio un error al cargar el archivo.");
+        setPopup({
+          visible: true,
+          type: "error",
+          message: data?.detail ?? "Ocurrio un error al cargar el archivo.",
+        });
       }
     } catch {
-      setResultadoCsv("No se pudo conectar con el servidor. Intenta de nuevo.");
+      setPopup({
+        visible: true,
+        type: "error",
+        message: "No se pudo conectar con el servidor. Intenta de nuevo.",
+      });
     } finally {
       setSubiendoCsv(false);
       if (inputArchivoRef.current) inputArchivoRef.current.value = "";
     }
   };
+
+  const handleArchivoSeleccionado = (e: ChangeEvent<HTMLInputElement>) => {
+    const archivo = e.target.files?.[0];
+    if (archivo) subirCsv(archivo);
+  };
+
+  const dispararSelectorArchivo = () => inputArchivoRef.current?.click();
 
   return (
     <div className="space-y-6">
@@ -320,26 +330,29 @@ export default function AsignacionPanel({ accessToken }: Props) {
             </button>
           </div>
         </form>
-      </div>
 
-      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
-        <h2 className="text-lg font-semibold text-slate-800 mb-2">Cargar actividades (CSV)</h2>
-        <p className="text-sm text-slate-600 mb-4">
-          Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE. El SITE debe
-          coincidir con el de una asignacion existente.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="mt-6 pt-6 border-t border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-800 mb-1">Cargar actividades (CSV)</h3>
+          <p className="text-xs text-slate-500 mb-3">
+            Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE. El SITE
+            debe coincidir con el de una asignacion existente.
+          </p>
           <input
             ref={inputArchivoRef}
             type="file"
             accept=".csv,text/csv"
             onChange={handleArchivoSeleccionado}
-            disabled={subiendoCsv}
-            className="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-60"
+            className="hidden"
           />
-          {subiendoCsv && <span className="text-sm text-slate-500">Cargando...</span>}
+          <button
+            type="button"
+            onClick={dispararSelectorArchivo}
+            disabled={subiendoCsv}
+            className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 font-medium px-4 py-2 rounded-md transition-colors"
+          >
+            {subiendoCsv ? "Cargando..." : "Seleccionar archivo"}
+          </button>
         </div>
-        {resultadoCsv && <p className="text-sm text-slate-700 mt-3">{resultadoCsv}</p>}
       </div>
 
       <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
@@ -468,12 +481,21 @@ export default function AsignacionPanel({ accessToken }: Props) {
                             </div>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => iniciarEdicion(trabajo)}
-                            className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1"
-                          >
-                            Editar
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => iniciarEdicion(trabajo)}
+                              className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={dispararSelectorArchivo}
+                              disabled={subiendoCsv}
+                              className="text-sm text-slate-600 hover:text-slate-800 disabled:text-slate-400 font-medium px-3 py-1"
+                            >
+                              Cargar CSV
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
