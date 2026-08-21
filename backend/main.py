@@ -188,11 +188,15 @@ def _campo_no_vacio(value: str, nombre_campo: str) -> str:
     return value
 
 
+ESTADOS_TRABAJO = ("asignado", "finalizado", "standby")
+
+
 class TrabajoCreate(BaseModel):
     id_smp: str = Field(..., min_length=1)
     site: str = Field(..., min_length=1)
     zona: str = Field(..., min_length=1)
     lider_id: str
+    estado: str = "asignado"
 
     @field_validator("id_smp")
     @classmethod
@@ -209,6 +213,13 @@ class TrabajoCreate(BaseModel):
     def zona_no_vacia(cls, value: str) -> str:
         return _campo_no_vacio(value, "La zona")
 
+    @field_validator("estado")
+    @classmethod
+    def estado_valido(cls, value: str) -> str:
+        if value not in ESTADOS_TRABAJO:
+            raise ValueError(f"El estado debe ser uno de: {', '.join(ESTADOS_TRABAJO)}")
+        return value
+
 
 class TrabajoUpdate(TrabajoCreate):
     pass
@@ -220,6 +231,7 @@ class TrabajoOut(BaseModel):
     site: str
     zona: str
     lider_id: str
+    estado: str = "asignado"
     lider_nombre: str | None = None
     lider_email: str | None = None
 
@@ -527,7 +539,7 @@ def listar_trabajos(
         response = (
             supabase.table("trabajos")
             .select(
-                "id, id_smp, site, zona, lider_id, "
+                "id, id_smp, site, zona, lider_id, estado, "
                 "lider:profiles!lider_id(nombre_completo, email)"
             )
             .order("created_at", desc=True)
@@ -562,6 +574,7 @@ def crear_trabajo(
                     "site": payload.site,
                     "zona": payload.zona,
                     "lider_id": payload.lider_id,
+                    "estado": payload.estado,
                     "asignado_por": admin.id,
                 }
             )
@@ -608,6 +621,7 @@ def actualizar_trabajo(
                     "site": payload.site,
                     "zona": payload.zona,
                     "lider_id": payload.lider_id,
+                    "estado": payload.estado,
                 }
             )
             .eq("id", trabajo_id)
@@ -757,12 +771,15 @@ def listar_mis_trabajos(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ) -> list[dict]:
     """Trabajos asignados al usuario logueado (para el panel del
-    lider_cuadrilla), cada uno con sus actividades importadas por CSV."""
+    lider_cuadrilla), cada uno con sus actividades importadas por CSV.
+    Solo se muestran los que estan en estado 'asignado': uno marcado
+    'finalizado' o 'standby' ya no aparece en la bandeja del lider."""
     try:
         trabajos_resp = (
             supabase.table("trabajos")
-            .select("id, id_smp, site, zona, lider_id")
+            .select("id, id_smp, site, zona, lider_id, estado")
             .eq("lider_id", usuario.id)
+            .eq("estado", "asignado")
             .order("created_at", desc=True)
             .execute()
         )

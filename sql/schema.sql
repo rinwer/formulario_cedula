@@ -103,19 +103,26 @@ create table if not exists public.trabajos (
   zona text not null check (length(trim(zona)) > 0),
   lider_id uuid not null references public.profiles (id) on delete cascade,
   asignado_por uuid references public.profiles (id) on delete set null,
+  estado text not null default 'asignado',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 -- Por si la tabla ya existia con el esquema anterior (titulo,
--- descripcion, estado): se agregan las columnas nuevas y se quitan las
--- viejas para dejar el esquema al dia de forma idempotente.
+-- descripcion, estado con otros valores): se agregan las columnas
+-- nuevas y se quitan las viejas para dejar el esquema al dia de forma
+-- idempotente.
 alter table public.trabajos add column if not exists id_smp text;
 alter table public.trabajos add column if not exists site text;
 alter table public.trabajos add column if not exists zona text;
 alter table public.trabajos drop column if exists titulo;
 alter table public.trabajos drop column if exists descripcion;
-alter table public.trabajos drop column if exists estado;
+-- OJO: la columna estado ya NO se dropea aqui (se dropeaba cuando tenia
+-- los valores viejos pendiente/en_progreso/completado). Ahora estado
+-- vuelve a existir con otro significado (asignado/finalizado/standby) y
+-- si se siguiera dropeando en cada corrida del script se perderian esos
+-- valores cada vez que el admin vuelva a ejecutar schema.sql.
+alter table public.trabajos add column if not exists estado text not null default 'asignado';
 
 do $$
 begin
@@ -126,11 +133,22 @@ begin
   end if;
 end $$;
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'trabajos_estado_check'
+  ) then
+    alter table public.trabajos add constraint trabajos_estado_check
+      check (estado in ('asignado', 'finalizado', 'standby'));
+  end if;
+end $$;
+
 comment on table public.trabajos is 'Trabajos asignados por un administrador a un lider_cuadrilla.';
 comment on column public.trabajos.id_smp is 'Identificador de la orden/SMP del trabajo.';
 comment on column public.trabajos.site is 'Nombre del site; debe coincidir con la columna SITE del CSV de actividades.';
 comment on column public.trabajos.lider_id is 'profiles.id del lider_cuadrilla responsable del trabajo.';
 comment on column public.trabajos.asignado_por is 'profiles.id del administrador que creo/asigno el trabajo.';
+comment on column public.trabajos.estado is 'asignado (visible para el lider), finalizado o standby (ya no aparecen en su bandeja).';
 
 create index if not exists idx_trabajos_lider_id on public.trabajos (lider_id);
 

@@ -106,7 +106,8 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   `zona`, lider asignado) via embedding de PostgREST sobre la FK
   `trabajos.lider_id -> profiles.id`.
 - `POST /api/admin/trabajos` / `PUT /api/admin/trabajos/{id}`: crea o
-  actualiza un trabajo (`id_smp`, `site`, `zona`, `lider_id`). Valida que
+  actualiza un trabajo (`id_smp`, `site`, `zona`, `lider_id`, `estado` —
+  `asignado` por defecto, `finalizado` o `standby`). Valida que
   `lider_id` exista, tenga rol `lider_cuadrilla` y este habilitado (400 si
   no). `site` es unico: crear/editar con un site repetido devuelve `409`.
 - `POST /api/admin/actividades/importar` (`multipart/form-data`, campo
@@ -172,7 +173,11 @@ Abre `http://localhost:5173`:
    - Pestana **Asignacion**: formulario para crear un trabajo (ID/SMP,
      site, zona, lider de cuadrilla — el selector solo muestra lideres
      habilitados), un boton para cargar el CSV de actividades, y la
-     tabla de trabajos asignados (editable: ID/SMP, site, lider, zona).
+     tabla de trabajos asignados (editable: ID/SMP, site, lider, zona,
+     **estado**). El estado es **Asignado** (default), **Finalizado** o
+     **Standby**; un trabajo en Finalizado o Standby deja de aparecer en
+     la bandeja del lider de cuadrilla (`GET /api/mis-trabajos` solo
+     devuelve los que estan en Asignado).
    - Pestana **Daily**: un calendario a la izquierda (resalta el dia de
      hoy y el dia seleccionado; "Ir a hoy" para volver rapido) y a la
      derecha, por cada trabajo, el site, el lider, si ya actualizo el
@@ -182,12 +187,16 @@ Abre `http://localhost:5173`:
      (`America/Bogota`, offset fijo -05:00, sin horario de verano) tanto
      en el backend como en el frontend, para que un avance guardado de
      noche no aparezca clasificado en el dia siguiente por estar en UTC.
-3. Si es `lider_cuadrilla`, ve sus trabajos asignados (ID/SMP, site,
-   zona) y, para cada uno, la tabla de actividades cargadas por CSV con
-   una columna extra **Avance de hoy** para escribir cuanto avanzo en
-   cada actividad, un cuadro de **comentario** y un boton **Guardar
-   avance de hoy**. Cada guardado queda en un historial (fecha,
-   comentario y detalle) que se muestra debajo de cada trabajo.
+3. Si es `lider_cuadrilla`, ve sus trabajos asignados (solo los que
+   estan en estado Asignado) como tarjetas **colapsadas** por defecto
+   (ID/SMP, site, zona y el % de avance general) que se despliegan al
+   hacer clic, para no ver todas las asignaciones abiertas a la vez si
+   tiene varias. Al desplegar una tarjeta se ve la tabla de actividades
+   cargadas por CSV con una columna extra **Avance de hoy** para
+   escribir cuanto avanzo en cada actividad, un cuadro de **comentario**
+   y un boton **Guardar avance de hoy**. Cada guardado queda en un
+   historial (fecha, comentario y detalle) que se muestra debajo de
+   cada trabajo.
    Una columna **Estado** compara el acumulado de todos los avances
    guardados contra el `qty` de esa actividad: mientras falte, muestra en
    rojo **"Faltan N"** (N = `qty` menos lo ya acumulado, no un confuso

@@ -31,6 +31,8 @@ type TrabajoCardProps = {
 };
 
 function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
+  const [expandido, setExpandido] = useState(false);
+
   const [avances, setAvances] = useState<Record<string, string>>({});
   const [comentario, setComentario] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -98,6 +100,19 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
     gruposPorActividad[nombre].qtyTotal += qty;
     gruposPorActividad[nombre].acumuladoTotal += acumulado;
   });
+
+  // Porcentaje general del trabajo completo, para mostrar en el resumen
+  // colapsado sin tener que desplegar la tarjeta.
+  let qtyTotalGeneral = 0;
+  let acumuladoTotalGeneral = 0;
+  trabajo.actividades.forEach((a) => {
+    const qty = qtyNumerico(a.qty);
+    if (qty === null) return;
+    qtyTotalGeneral += qty;
+    acumuladoTotalGeneral += Math.min(acumuladoPorActividad[a.id] ?? 0, qty);
+  });
+  const porcentajeGeneral =
+    qtyTotalGeneral > 0 ? Math.round((acumuladoTotalGeneral / qtyTotalGeneral) * 100) : null;
 
   const cargarHistorial = async () => {
     setCargandoHistorial(true);
@@ -183,171 +198,204 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
 
   return (
     <div className="border border-slate-200 rounded-lg p-4">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
-        <span className="font-semibold text-slate-800">{trabajo.id_smp}</span>
-        <span className="text-sm text-slate-600">Site: {trabajo.site}</span>
-        <span className="text-sm text-slate-600">Zona: {trabajo.zona}</span>
-      </div>
-
-      {trabajo.actividades.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          Todavia no se han cargado actividades para este site.
-        </p>
-      ) : (
-        <>
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="w-full lg:w-56 shrink-0 border border-slate-200 rounded-lg p-3">
-              <h3 className="text-sm font-semibold text-slate-700 mb-2">Avance por actividad</h3>
-              {Object.keys(gruposPorActividad).length === 0 ? (
-                <p className="text-xs text-slate-400">
-                  Ninguna actividad tiene un qty numerico para calcular el %.
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {Object.entries(gruposPorActividad).map(([nombre, grupo]) => {
-                    const porcentaje =
-                      grupo.qtyTotal > 0
-                        ? Math.round((grupo.acumuladoTotal / grupo.qtyTotal) * 100)
-                        : 0;
-                    return (
-                      <li key={nombre}>
-                        <div className="flex justify-between text-xs text-slate-600 mb-1">
-                          <span>{nombre}</span>
-                          <span className="font-medium">{porcentaje}%</span>
-                        </div>
-                        <div className="h-1.5 w-full rounded-full bg-slate-100">
-                          <div
-                            className={
-                              "h-1.5 rounded-full " +
-                              (porcentaje >= 100 ? "bg-emerald-500" : "bg-blue-500")
-                            }
-                            style={{ width: `${Math.min(porcentaje, 100)}%` }}
-                          />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-2 pr-4 font-medium">Actividad</th>
-                    <th className="py-2 pr-4 font-medium">Tipificacion</th>
-                    <th className="py-2 pr-4 font-medium">HW-Actividad</th>
-                    <th className="py-2 pr-4 font-medium">Qty</th>
-                    <th className="py-2 pr-4 font-medium">Avance</th>
-                    <th className="py-2 pr-4 font-medium">Avance de hoy</th>
-                    <th className="py-2 pr-4 font-medium">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trabajo.actividades.map((actividad) => {
-                    const qtyMax = qtyNumerico(actividad.qty);
-                    const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
-                    const completa = actividadesCompletas.has(actividad.id);
-                    return (
-                      <tr key={actividad.id} className="border-b border-slate-100 last:border-0">
-                        <td className="py-2 pr-4 text-slate-700">{actividad.actividad}</td>
-                        <td className="py-2 pr-4 text-slate-700">{actividad.tipificacion}</td>
-                        <td className="py-2 pr-4 text-slate-700">{actividad.hw_actividad}</td>
-                        <td className="py-2 pr-4 text-slate-700">{actividad.qty}</td>
-                        <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
-                        <td className="py-2 pr-4">
-                          <input
-                            type="number"
-                            min={0}
-                            max={pendientePorActividad[actividad.id] ?? undefined}
-                            inputMode="numeric"
-                            value={completa ? "" : avances[actividad.id] ?? ""}
-                            onChange={(e) => manejarCambioAvance(actividad.id, e.target.value)}
-                            disabled={completa}
-                            className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="py-2 pr-4">
-                          {completa ? (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-                              Completado
-                            </span>
-                          ) : qtyMax !== null ? (
-                            <span className="text-xs font-semibold text-red-600">
-                              Faltan {qtyMax - acumulado}
-                            </span>
-                          ) : null}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <label
-              htmlFor={`comentario-${trabajo.id}`}
-              className="block text-sm font-medium text-slate-700 mb-1"
+      <button
+        type="button"
+        onClick={() => setExpandido((v) => !v)}
+        className="w-full flex flex-wrap items-center justify-between gap-3 text-left"
+      >
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="font-semibold text-slate-800">{trabajo.id_smp}</span>
+          <span className="text-sm text-slate-600">Site: {trabajo.site}</span>
+          <span className="text-sm text-slate-600">Zona: {trabajo.zona}</span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {porcentajeGeneral !== null && (
+            <span
+              className={
+                "text-xs font-semibold px-2 py-0.5 rounded-full " +
+                (porcentajeGeneral >= 100
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "bg-blue-100 text-blue-700")
+              }
             >
-              Comentario del avance de hoy
-            </label>
-            <textarea
-              id={`comentario-${trabajo.id}`}
-              value={comentario}
-              onChange={(e) => setComentario(e.target.value)}
-              rows={3}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Describe lo que realmente se avanzo hoy..."
-            />
+              {porcentajeGeneral}% avance
+            </span>
+          )}
+          <span
+            className={"text-slate-400 transition-transform " + (expandido ? "rotate-180" : "")}
+            aria-hidden
+          >
+            ▾
+          </span>
+        </div>
+      </button>
 
-            {mensaje && (
-              <p
-                className={
-                  "text-sm mt-2 " + (mensaje.type === "success" ? "text-green-600" : "text-red-600")
-                }
-              >
-                {mensaje.text}
-              </p>
-            )}
-
-            <button
-              onClick={handleGuardar}
-              disabled={guardando}
-              className="mt-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium px-4 py-2 rounded-md transition-colors"
-            >
-              {guardando ? "Guardando..." : "Guardar avance de hoy"}
-            </button>
-          </div>
-
-          <div className="mt-5 pt-4 border-t border-slate-200">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">Historial de avances</h3>
-            {cargandoHistorial && <p className="text-sm text-slate-500">Cargando...</p>}
-            {!cargandoHistorial && historial.length === 0 && (
-              <p className="text-sm text-slate-500">Todavia no hay avances registrados.</p>
-            )}
-            <ul className="space-y-2">
-              {historial.map((avance) => (
-                <li key={avance.id} className="text-sm text-slate-600 border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-700">
-                    {formatearFecha(avance.created_at)}
-                  </span>
-                  {avance.comentario && <p className="mt-0.5">{avance.comentario}</p>}
-                  {avance.detalles.length > 0 && (
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {avance.detalles
-                        .map((d) => `${hwActividadPorId[d.actividad_id] ?? d.actividad_id}: ${d.cantidad}`)
-                        .join(" · ")}
+      {expandido && (
+        <div className="mt-4">
+          {trabajo.actividades.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Todavia no se han cargado actividades para este site.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-col lg:flex-row gap-4">
+                <div className="w-full lg:w-56 shrink-0 border border-slate-200 rounded-lg p-3">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Avance por actividad</h3>
+                  {Object.keys(gruposPorActividad).length === 0 ? (
+                    <p className="text-xs text-slate-400">
+                      Ninguna actividad tiene un qty numerico para calcular el %.
                     </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {Object.entries(gruposPorActividad).map(([nombre, grupo]) => {
+                        const porcentaje =
+                          grupo.qtyTotal > 0
+                            ? Math.round((grupo.acumuladoTotal / grupo.qtyTotal) * 100)
+                            : 0;
+                        return (
+                          <li key={nombre}>
+                            <div className="flex justify-between text-xs text-slate-600 mb-1">
+                              <span>{nombre}</span>
+                              <span className="font-medium">{porcentaje}%</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-slate-100">
+                              <div
+                                className={
+                                  "h-1.5 rounded-full " +
+                                  (porcentaje >= 100 ? "bg-emerald-500" : "bg-blue-500")
+                                }
+                                style={{ width: `${Math.min(porcentaje, 100)}%` }}
+                              />
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
+                </div>
+
+                <div className="overflow-x-auto flex-1">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500">
+                        <th className="py-2 pr-4 font-medium">Actividad</th>
+                        <th className="py-2 pr-4 font-medium">Tipificacion</th>
+                        <th className="py-2 pr-4 font-medium">HW-Actividad</th>
+                        <th className="py-2 pr-4 font-medium">Qty</th>
+                        <th className="py-2 pr-4 font-medium">Avance</th>
+                        <th className="py-2 pr-4 font-medium">Avance de hoy</th>
+                        <th className="py-2 pr-4 font-medium">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trabajo.actividades.map((actividad) => {
+                        const qtyMax = qtyNumerico(actividad.qty);
+                        const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
+                        const completa = actividadesCompletas.has(actividad.id);
+                        return (
+                          <tr key={actividad.id} className="border-b border-slate-100 last:border-0">
+                            <td className="py-2 pr-4 text-slate-700">{actividad.actividad}</td>
+                            <td className="py-2 pr-4 text-slate-700">{actividad.tipificacion}</td>
+                            <td className="py-2 pr-4 text-slate-700">{actividad.hw_actividad}</td>
+                            <td className="py-2 pr-4 text-slate-700">{actividad.qty}</td>
+                            <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
+                            <td className="py-2 pr-4">
+                              <input
+                                type="number"
+                                min={0}
+                                max={pendientePorActividad[actividad.id] ?? undefined}
+                                inputMode="numeric"
+                                value={completa ? "" : avances[actividad.id] ?? ""}
+                                onChange={(e) => manejarCambioAvance(actividad.id, e.target.value)}
+                                disabled={completa}
+                                className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="py-2 pr-4">
+                              {completa ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                  Completado
+                                </span>
+                              ) : qtyMax !== null ? (
+                                <span className="text-xs font-semibold text-red-600">
+                                  Faltan {qtyMax - acumulado}
+                                </span>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label
+                  htmlFor={`comentario-${trabajo.id}`}
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
+                  Comentario del avance de hoy
+                </label>
+                <textarea
+                  id={`comentario-${trabajo.id}`}
+                  value={comentario}
+                  onChange={(e) => setComentario(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Describe lo que realmente se avanzo hoy..."
+                />
+
+                {mensaje && (
+                  <p
+                    className={
+                      "text-sm mt-2 " +
+                      (mensaje.type === "success" ? "text-green-600" : "text-red-600")
+                    }
+                  >
+                    {mensaje.text}
+                  </p>
+                )}
+
+                <button
+                  onClick={handleGuardar}
+                  disabled={guardando}
+                  className="mt-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium px-4 py-2 rounded-md transition-colors"
+                >
+                  {guardando ? "Guardando..." : "Guardar avance de hoy"}
+                </button>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-slate-200">
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Historial de avances</h3>
+                {cargandoHistorial && <p className="text-sm text-slate-500">Cargando...</p>}
+                {!cargandoHistorial && historial.length === 0 && (
+                  <p className="text-sm text-slate-500">Todavia no hay avances registrados.</p>
+                )}
+                <ul className="space-y-2">
+                  {historial.map((avance) => (
+                    <li key={avance.id} className="text-sm text-slate-600 border-b border-slate-100 pb-2">
+                      <span className="font-medium text-slate-700">
+                        {formatearFecha(avance.created_at)}
+                      </span>
+                      {avance.comentario && <p className="mt-0.5">{avance.comentario}</p>}
+                      {avance.detalles.length > 0 && (
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {avance.detalles
+                            .map(
+                              (d) => `${hwActividadPorId[d.actividad_id] ?? d.actividad_id}: ${d.cantidad}`
+                            )
+                            .join(" · ")}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

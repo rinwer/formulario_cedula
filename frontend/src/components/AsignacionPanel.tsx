@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { Trabajo, Usuario } from "../types";
+import { EstadoTrabajo, Trabajo, Usuario } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -10,6 +10,18 @@ type PopupState = {
 };
 
 const initialPopup: PopupState = { visible: false, type: "success", message: "" };
+
+const ESTADO_LABEL: Record<EstadoTrabajo, string> = {
+  asignado: "Asignado",
+  finalizado: "Finalizado",
+  standby: "Standby",
+};
+
+const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
+  asignado: "bg-emerald-100 text-emerald-700",
+  finalizado: "bg-slate-200 text-slate-600",
+  standby: "bg-amber-100 text-amber-700",
+};
 
 type Props = {
   accessToken: string;
@@ -37,6 +49,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
   const [siteEditado, setSiteEditado] = useState("");
   const [zonaEditada, setZonaEditada] = useState("");
   const [liderEditado, setLiderEditado] = useState("");
+  const [estadoEditado, setEstadoEditado] = useState<EstadoTrabajo>("asignado");
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
@@ -151,6 +164,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setSiteEditado(trabajo.site);
     setZonaEditada(trabajo.zona);
     setLiderEditado(trabajo.lider_id);
+    setEstadoEditado(trabajo.estado);
     setErrorEdicion(null);
   };
 
@@ -175,6 +189,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
           site: siteEditado.trim(),
           zona: zonaEditada.trim(),
           lider_id: liderEditado,
+          estado: estadoEditado,
         }),
       });
 
@@ -375,6 +390,13 @@ export default function AsignacionPanel({ accessToken }: Props) {
         )}
 
         {trabajos.length > 0 && (
+          <p className="text-xs text-slate-500 mb-3">
+            Un trabajo en <strong>Finalizado</strong> o <strong>Standby</strong> deja de aparecer en
+            la bandeja del lider de cuadrilla.
+          </p>
+        )}
+
+        {trabajos.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
@@ -383,6 +405,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
                   <th className="py-2 pr-4 font-medium">Site</th>
                   <th className="py-2 pr-4 font-medium">Lider de cuadrilla</th>
                   <th className="py-2 pr-4 font-medium">Zona</th>
+                  <th className="py-2 pr-4 font-medium">Estado</th>
                   <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
@@ -448,6 +471,28 @@ export default function AsignacionPanel({ accessToken }: Props) {
                           />
                         ) : (
                           trabajo.zona
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {editando ? (
+                          <select
+                            value={estadoEditado}
+                            onChange={(e) => setEstadoEditado(e.target.value as EstadoTrabajo)}
+                            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="asignado">Asignado</option>
+                            <option value="finalizado">Finalizado</option>
+                            <option value="standby">Standby</option>
+                          </select>
+                        ) : (
+                          <span
+                            className={
+                              "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                              ESTADO_BADGE[trabajo.estado]
+                            }
+                          >
+                            {ESTADO_LABEL[trabajo.estado]}
+                          </span>
                         )}
                       </td>
                       <td className="py-2 pr-4 text-right whitespace-nowrap">

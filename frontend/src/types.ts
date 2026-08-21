@@ -15,12 +15,15 @@ export type Usuario = {
   activo: boolean;
 };
 
+export type EstadoTrabajo = "asignado" | "finalizado" | "standby";
+
 export type Trabajo = {
   id: string;
   id_smp: string;
   site: string;
   zona: string;
   lider_id: string;
+  estado: EstadoTrabajo;
   lider_nombre: string | null;
   lider_email: string | null;
 };
