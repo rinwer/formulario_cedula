@@ -5,11 +5,19 @@ const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
 const DIAS_SEMANA = ["D", "L", "M", "M", "J", "V", "S"];
 
+// Colombia no tiene horario de verano (offset fijo -05:00). Se calcula
+// "hoy" en esa zona horaria en vez de la del navegador que abre la
+// pagina, para que coincida con lo que el backend considera "hoy".
+const FORMATO_FECHA_COLOMBIA = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Bogota",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 function hoyIso(): string {
-  const hoy = new Date();
-  const mes = String(hoy.getMonth() + 1).padStart(2, "0");
-  const dia = String(hoy.getDate()).padStart(2, "0");
-  return `${hoy.getFullYear()}-${mes}-${dia}`;
+  // en-CA formatea como YYYY-MM-DD.
+  return FORMATO_FECHA_COLOMBIA.format(new Date());
 }
 
 type CalendarioProps = {
@@ -18,7 +26,7 @@ type CalendarioProps = {
 };
 
 function Calendario({ fechaSeleccionada, onSeleccionar }: CalendarioProps) {
-  const hoy = new Date();
+  const hoyIsoColombia = hoyIso();
   const fechaSel = new Date(`${fechaSeleccionada}T00:00:00`);
   const [mesVisible, setMesVisible] = useState(
     new Date(fechaSel.getFullYear(), fechaSel.getMonth(), 1)
@@ -44,10 +52,7 @@ function Calendario({ fechaSeleccionada, onSeleccionar }: CalendarioProps) {
     return `${anio}-${mes}-${String(dia).padStart(2, "0")}`;
   };
 
-  const esHoy = (dia: number) =>
-    mesVisible.getFullYear() === hoy.getFullYear() &&
-    mesVisible.getMonth() === hoy.getMonth() &&
-    dia === hoy.getDate();
+  const esHoy = (dia: number) => formatearCelda(dia) === hoyIsoColombia;
 
   const esSeleccionado = (dia: number) => formatearCelda(dia) === fechaSeleccionada;
 

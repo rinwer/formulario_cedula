@@ -28,6 +28,11 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Colombia no tiene horario de verano: el offset es siempre -05:00. Se usa
+# para calcular "hoy" y los limites de cada dia en la pestana Daily, en
+# vez de la fecha UTC del servidor (que puede diferir varias horas).
+ZONA_COLOMBIA = timezone(timedelta(hours=-5))
+
 app = FastAPI(title="API Gestion de Usuarios")
 
 # En desarrollo se permite el origen del frontend (Vite -> localhost:5173).
@@ -991,14 +996,17 @@ def listar_avances_diarios_admin(
     actualizo el avance de un dia dado (por defecto hoy), cuanto reporto
     y que comentario dejo."""
     try:
-        fecha_obj = date.fromisoformat(fecha) if fecha else date.today()
+        fecha_obj = date.fromisoformat(fecha) if fecha else datetime.now(ZONA_COLOMBIA).date()
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Fecha invalida, usa el formato YYYY-MM-DD.",
         ) from exc
 
-    inicio = datetime.combine(fecha_obj, datetime.min.time(), tzinfo=timezone.utc)
+    # El "dia" se define en hora de Colombia (00:00 a 23:59:59 -05:00), no
+    # en UTC: un avance guardado en la noche en Colombia ya es "manana" en
+    # UTC y quedaria mal clasificado si se comparara en UTC directo.
+    inicio = datetime.combine(fecha_obj, datetime.min.time(), tzinfo=ZONA_COLOMBIA)
     fin = inicio + timedelta(days=1)
 
     try:

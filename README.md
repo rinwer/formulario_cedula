@@ -178,7 +178,10 @@ Abre `http://localhost:5173`:
      derecha, por cada trabajo, el site, el lider, si ya actualizo el
      avance de ese dia o no, lo que reporto (por actividad) y su
      comentario. Cambiar el dia en el calendario recarga la tabla con
-     los avances de ese dia.
+     los avances de ese dia. El "dia" se calcula en hora de Colombia
+     (`America/Bogota`, offset fijo -05:00, sin horario de verano) tanto
+     en el backend como en el frontend, para que un avance guardado de
+     noche no aparezca clasificado en el dia siguiente por estar en UTC.
 3. Si es `lider_cuadrilla`, ve sus trabajos asignados (ID/SMP, site,
    zona) y, para cada uno, la tabla de actividades cargadas por CSV con
    una columna extra **Avance de hoy** para escribir cuanto avanzo en
