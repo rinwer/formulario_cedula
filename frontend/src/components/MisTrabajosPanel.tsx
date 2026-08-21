@@ -208,7 +208,7 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
                     <th className="py-2 pr-4 font-medium">Qty</th>
                     <th className="py-2 pr-4 font-medium">Avance</th>
                     <th className="py-2 pr-4 font-medium">Avance de hoy</th>
-                    <th className="py-2 pr-4 font-medium">Completado</th>
+                    <th className="py-2 pr-4 font-medium">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -243,8 +243,8 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
                               Completado
                             </span>
                           ) : qtyMax !== null ? (
-                            <span className="text-xs text-slate-400">
-                              {acumulado}/{qtyMax}
+                            <span className="text-xs font-semibold text-red-600">
+                              Faltan {qtyMax - acumulado}
                             </span>
                           ) : null}
                         </td>
