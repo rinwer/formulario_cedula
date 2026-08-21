@@ -61,6 +61,27 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
       .map((a) => a.id)
   );
 
+  // Cuanto le falta a cada actividad (qty - acumulado). null = sin qty
+  // numerico, no se puede limitar.
+  const pendientePorActividad: Record<string, number | null> = {};
+  trabajo.actividades.forEach((a) => {
+    const qtyMax = qtyNumerico(a.qty);
+    const acumulado = acumuladoPorActividad[a.id] ?? 0;
+    pendientePorActividad[a.id] = qtyMax !== null ? Math.max(qtyMax - acumulado, 0) : null;
+  });
+
+  const manejarCambioAvance = (actividadId: string, valorTexto: string) => {
+    if (valorTexto.trim() === "") {
+      setAvances((prev) => ({ ...prev, [actividadId]: "" }));
+      return;
+    }
+    const numero = Number(valorTexto);
+    if (!Number.isFinite(numero)) return;
+    const tope = pendientePorActividad[actividadId];
+    const acotado = Math.max(0, tope !== null ? Math.min(numero, tope) : numero);
+    setAvances((prev) => ({ ...prev, [actividadId]: String(acotado) }));
+  };
+
   // Agrupa por el nombre de la columna "Actividad" (ej: "1. PRE",
   // "2. Instalacion") para sacar el % de avance de cada grupo: suma el
   // qty y el acumulado de todas las filas (HW-Actividad) que comparten
@@ -108,6 +129,18 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
 
     if (detalles.some((d) => !Number.isFinite(d.cantidad) || d.cantidad < 0)) {
       setMensaje({ type: "error", text: "El avance debe ser un numero valido (0 o mas)." });
+      return;
+    }
+
+    const excedeLoPendiente = detalles.some((d) => {
+      const tope = pendientePorActividad[d.actividad_id];
+      return tope !== null && d.cantidad > tope;
+    });
+    if (excedeLoPendiente) {
+      setMensaje({
+        type: "error",
+        text: "Un avance supera lo que falta por completar en esa actividad.",
+      });
       return;
     }
 
@@ -227,11 +260,10 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
                           <input
                             type="number"
                             min={0}
+                            max={pendientePorActividad[actividad.id] ?? undefined}
                             inputMode="numeric"
                             value={completa ? "" : avances[actividad.id] ?? ""}
-                            onChange={(e) =>
-                              setAvances((prev) => ({ ...prev, [actividad.id]: e.target.value }))
-                            }
+                            onChange={(e) => manejarCambioAvance(actividad.id, e.target.value)}
                             disabled={completa}
                             className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
                             placeholder="0"

@@ -189,9 +189,11 @@ Abre `http://localhost:5173`:
    guardados contra el `qty` de esa actividad: mientras falte, muestra en
    rojo **"Faltan N"** (N = `qty` menos lo ya acumulado, no un confuso
    "x/y"); al llegar a 0 se bloquea el input (ya no se le puede seguir
-   reportando avance) y se muestra en verde **"Completado"**. El backend
-   valida lo mismo del lado del servidor (no se puede superar el `qty`
-   aunque se llame a la API directamente). A la
+   reportando avance) y se muestra en verde **"Completado"**. El input
+   "Avance de hoy" no deja escribir menos de 0 ni mas de "Faltan N" (se
+   acota automaticamente al tope mientras escribe), y el backend valida
+   lo mismo del lado del servidor (no se puede superar el `qty` aunque
+   se llame a la API directamente). A la
    izquierda de la tabla hay un recuadro **"Avance por actividad"** que
    agrupa las filas por el nombre de la columna Actividad (ej. "1. PRE",
    "2. Instalacion") y muestra el % de avance de cada grupo (suma de
