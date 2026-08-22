@@ -23,6 +23,64 @@ const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
   standby: "bg-amber-100 text-amber-700",
 };
 
+type InfoTooltipProps = {
+  texto: string;
+  variante?: "info" | "advertencia";
+  label: string;
+};
+
+function InfoTooltip({ texto, variante = "info", label }: InfoTooltipProps) {
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const manejarClickFuera = (e: MouseEvent) => {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target as Node)) {
+        setAbierto(false);
+      }
+    };
+    document.addEventListener("mousedown", manejarClickFuera);
+    return () => document.removeEventListener("mousedown", manejarClickFuera);
+  }, [abierto]);
+
+  const colores =
+    variante === "advertencia"
+      ? "text-amber-700 bg-amber-50 border-amber-200"
+      : "text-slate-600 bg-white border-slate-200";
+
+  return (
+    <div className="relative inline-block" ref={contenedorRef}>
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-label={label}
+        className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold hover:bg-slate-300"
+      >
+        i
+      </button>
+      {abierto && (
+        <div
+          className={
+            "absolute left-0 top-6 z-10 w-72 text-xs rounded-md border px-3 py-2 pr-6 shadow-md " +
+            colores
+          }
+        >
+          <button
+            type="button"
+            onClick={() => setAbierto(false)}
+            aria-label="Cerrar"
+            className="absolute top-1 right-1.5 text-slate-400 hover:text-slate-600 leading-none"
+          >
+            ✕
+          </button>
+          {texto}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type Props = {
   accessToken: string;
 };
@@ -55,7 +113,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const [subiendoCsv, setSubiendoCsv] = useState(false);
-  const [mostrarAyudaCsv, setMostrarAyudaCsv] = useState(false);
 
   const cerrarPopup = () => setPopup(initialPopup);
 
@@ -356,31 +413,26 @@ export default function AsignacionPanel({ accessToken }: Props) {
         </form>
 
         <div className="mt-6 pt-6 border-t border-slate-200">
-          <div className="flex items-center gap-1.5 mb-1">
+          <div className="flex items-center gap-1.5 mb-3">
             <h3 className="text-sm font-semibold text-slate-800">Cargar actividades (CSV)</h3>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMostrarAyudaCsv((v) => !v)}
-                aria-label="Ayuda sobre la carga de actividades"
-                className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold hover:bg-slate-300"
-              >
-                i
-              </button>
-              {mostrarAyudaCsv && (
-                <div className="absolute left-0 top-6 z-10 w-72 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 shadow-md">
-                  Si el site es nuevo, primero haz clic en <strong>"Asignar trabajo"</strong> arriba
-                  para crearlo. El CSV solo vincula actividades a sites que ya existan en "Trabajos
-                  asignados"; si lo subes antes, no se carga nada aunque el archivo este bien.
-                </div>
-              )}
-            </div>
+            <InfoTooltip
+              variante="advertencia"
+              label="Ayuda: cuando se puede cargar el CSV"
+              texto={
+                'Si el site es nuevo, primero haz clic en "Asignar trabajo" arriba para crearlo. ' +
+                'El CSV solo vincula actividades a sites que ya existan en "Trabajos asignados"; ' +
+                "si lo subes antes, no se carga nada aunque el archivo este bien."
+              }
+            />
+            <InfoTooltip
+              label="Ayuda: columnas esperadas del CSV"
+              texto={
+                "Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE " +
+                "(separadas por coma, punto y coma o punto — se detecta solo). El SITE debe " +
+                "coincidir con el de una asignacion existente."
+              }
+            />
           </div>
-          <p className="text-xs text-slate-500 mb-3">
-            Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE (separadas
-            por coma, punto y coma o punto — se detecta solo). El SITE debe coincidir con el de una
-            asignacion existente.
-          </p>
           <input
             ref={inputArchivoRef}
             type="file"
