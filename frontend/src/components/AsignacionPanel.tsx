@@ -55,6 +55,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const [subiendoCsv, setSubiendoCsv] = useState(false);
+  const [mostrarAyudaCsv, setMostrarAyudaCsv] = useState(false);
 
   const cerrarPopup = () => setPopup(initialPopup);
 
@@ -355,16 +356,30 @@ export default function AsignacionPanel({ accessToken }: Props) {
         </form>
 
         <div className="mt-6 pt-6 border-t border-slate-200">
-          <h3 className="text-sm font-semibold text-slate-800 mb-1">Cargar actividades (CSV)</h3>
+          <div className="flex items-center gap-1.5 mb-1">
+            <h3 className="text-sm font-semibold text-slate-800">Cargar actividades (CSV)</h3>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMostrarAyudaCsv((v) => !v)}
+                aria-label="Ayuda sobre la carga de actividades"
+                className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold hover:bg-slate-300"
+              >
+                i
+              </button>
+              {mostrarAyudaCsv && (
+                <div className="absolute left-0 top-6 z-10 w-72 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 shadow-md">
+                  Si el site es nuevo, primero haz clic en <strong>"Asignar trabajo"</strong> arriba
+                  para crearlo. El CSV solo vincula actividades a sites que ya existan en "Trabajos
+                  asignados"; si lo subes antes, no se carga nada aunque el archivo este bien.
+                </div>
+              )}
+            </div>
+          </div>
           <p className="text-xs text-slate-500 mb-3">
             Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE (separadas
             por coma, punto y coma o punto — se detecta solo). El SITE debe coincidir con el de una
             asignacion existente.
-          </p>
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
-            Si el site es nuevo, primero haz clic en <strong>"Asignar trabajo"</strong> arriba para
-            crearlo. El CSV solo vincula actividades a sites que ya existan en "Trabajos asignados";
-            si lo subes antes, no se carga nada aunque el archivo este bien.
           </p>
           <input
             ref={inputArchivoRef}
