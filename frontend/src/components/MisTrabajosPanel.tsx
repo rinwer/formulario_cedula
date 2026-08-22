@@ -238,7 +238,7 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
             </p>
           ) : (
             <>
-              <div className="flex flex-col lg:flex-row gap-4">
+              <div className="flex flex-col lg:flex-row items-start gap-4">
                 <div className="w-full max-w-xs sm:w-56 shrink-0 border border-slate-200 rounded-lg p-3">
                   <h3 className="text-sm font-semibold text-slate-700 mb-2">Avance por actividad</h3>
                   {Object.keys(gruposPorActividad).length === 0 ? (
