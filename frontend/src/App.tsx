@@ -95,7 +95,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div
+          className={
+            "mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3 " +
+            (perfil.role === "lider_cuadrilla" ? "max-w-7xl" : "max-w-5xl")
+          }
+        >
           <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <span className="font-semibold text-slate-800">Gestion de Usuarios</span>
             {perfil.role === "administrador" && (
@@ -132,7 +137,12 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 sm:py-8">
+      <main
+        className={
+          "mx-auto px-4 py-6 sm:py-8 " +
+          (perfil.role === "lider_cuadrilla" ? "max-w-7xl" : "max-w-5xl")
+        }
+      >
         {perfil.role === "administrador" ? (
           <>
             {tabActiva === "perfiles" && <PerfilesPanel accessToken={session.access_token} />}
