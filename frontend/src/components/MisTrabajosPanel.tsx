@@ -293,24 +293,35 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
                         const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
                         const completa = actividadesCompletas.has(actividad.id);
                         return (
-                          <tr key={actividad.id} className="border-b border-slate-100 last:border-0">
+                          <tr
+                            key={actividad.id}
+                            className={
+                              "border-b border-slate-100 last:border-0 " +
+                              (completa ? "bg-emerald-50/60" : "")
+                            }
+                          >
                             <td className="py-2 pr-4 text-slate-700">{actividad.actividad}</td>
                             <td className="py-2 pr-4 text-slate-700">{actividad.tipificacion}</td>
                             <td className="py-2 pr-4 text-slate-700">{actividad.hw_actividad}</td>
                             <td className="py-2 pr-4 text-slate-700">{actividad.qty}</td>
                             <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
                             <td className="py-2 pr-4">
-                              <input
-                                type="number"
-                                min={0}
-                                max={pendientePorActividad[actividad.id] ?? undefined}
-                                inputMode="numeric"
-                                value={completa ? "" : avances[actividad.id] ?? ""}
-                                onChange={(e) => manejarCambioAvance(actividad.id, e.target.value)}
-                                disabled={completa}
-                                className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
-                                placeholder="0"
-                              />
+                              {completa ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium">
+                                  <span aria-hidden>✓</span> {acumulado} reportado
+                                </span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={pendientePorActividad[actividad.id] ?? undefined}
+                                  inputMode="numeric"
+                                  value={avances[actividad.id] ?? ""}
+                                  onChange={(e) => manejarCambioAvance(actividad.id, e.target.value)}
+                                  className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  placeholder="0"
+                                />
+                              )}
                             </td>
                             <td className="py-2 pr-4">
                               {completa ? (
