@@ -225,11 +225,19 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
       if (res.ok) {
         const sinCoincidencia: string[] = data?.sitios_no_encontrados ?? [];
-        let mensaje = `Se cargaron ${data?.actividades_cargadas ?? 0} actividad(es).`;
+        const cargadas: number = data?.actividades_cargadas ?? 0;
+        let mensaje = `Se cargaron ${cargadas} actividad(es).`;
         if (sinCoincidencia.length > 0) {
           mensaje += ` No se encontro asignacion para estos sites: ${sinCoincidencia.join(", ")}.`;
+          if (cargadas === 0) {
+            mensaje +=
+              ' Primero haz clic en "Asignar trabajo" para crear ese site y despues vuelve a cargar el CSV.';
+          }
         }
-        setPopup({ visible: true, type: "success", message: mensaje });
+        // Si no se cargo nada, no es realmente un exito aunque la
+        // peticion haya respondido 200: se muestra en rojo para que no
+        // parezca que si funciono.
+        setPopup({ visible: true, type: cargadas > 0 ? "success" : "error", message: mensaje });
       } else {
         setPopup({
           visible: true,
@@ -352,6 +360,11 @@ export default function AsignacionPanel({ accessToken }: Props) {
             Columnas esperadas: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE (separadas
             por coma, punto y coma o punto — se detecta solo). El SITE debe coincidir con el de una
             asignacion existente.
+          </p>
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
+            Si el site es nuevo, primero haz clic en <strong>"Asignar trabajo"</strong> arriba para
+            crearlo. El CSV solo vincula actividades a sites que ya existan en "Trabajos asignados";
+            si lo subes antes, no se carga nada aunque el archivo este bien.
           </p>
           <input
             ref={inputArchivoRef}
