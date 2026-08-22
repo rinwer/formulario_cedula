@@ -307,8 +307,11 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
                             <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
                             <td className="py-2 pr-4">
                               {completa ? (
-                                <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium">
-                                  <span aria-hidden>✓</span> {acumulado} reportado
+                                <span
+                                  className="text-emerald-600 text-base font-medium"
+                                  aria-label={`${acumulado} reportado`}
+                                >
+                                  ✓
                                 </span>
                               ) : (
                                 <input
