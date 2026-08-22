@@ -193,6 +193,7 @@ export default function DailyPanel({ accessToken }: Props) {
                   <th className="py-2 pr-4 font-medium">Site</th>
                   <th className="py-2 pr-4 font-medium">Lider</th>
                   <th className="py-2 pr-4 font-medium">Actualizo</th>
+                  <th className="py-2 pr-4 font-medium">% Avance</th>
                   <th className="py-2 pr-4 font-medium">Avance del dia</th>
                   <th className="py-2 pr-4 font-medium">Comentario</th>
                 </tr>
@@ -218,6 +219,20 @@ export default function DailyPanel({ accessToken }: Props) {
                       >
                         {fila.actualizado ? "Actualizado" : "Sin actualizar"}
                       </span>
+                    </td>
+                    <td className="py-2 pr-4">
+                      {fila.porcentaje_avance === null ? (
+                        <span className="text-slate-400">—</span>
+                      ) : (
+                        <span
+                          className={
+                            "text-xs font-semibold " +
+                            (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
+                          }
+                        >
+                          {fila.porcentaje_avance}%
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-4 text-xs text-slate-600">
                       {fila.detalle.length === 0

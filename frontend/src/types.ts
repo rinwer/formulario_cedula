@@ -71,4 +71,5 @@ export type AvanceDiarioAdmin = {
   actualizado: boolean;
   comentarios: string[];
   detalle: AvanceResumenDetalle[];
+  porcentaje_avance: number | null;
 };

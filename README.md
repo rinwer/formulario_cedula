@@ -132,9 +132,14 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   guardados para ese trabajo (mas recientes primero).
 - `GET /api/admin/avances-diarios?fecha=YYYY-MM-DD` (solo administrador,
   `fecha` opcional, por defecto hoy): por cada trabajo devuelve el site,
-  el lider, si ya actualizo el avance ese dia (`actualizado`), el detalle
-  de lo avanzado (`detalle`, sumado por actividad) y los comentarios que
-  dejo ese dia. Es lo que consume la pestana "Daily".
+  el lider, si ya actualizo el avance ese dia (`actualizado`), el
+  `porcentaje_avance` general del trabajo (acumulado de todo el
+  historial hasta el final de esa fecha, sobre el `qty` de sus
+  actividades), el detalle de lo avanzado (`detalle`, sumado por
+  actividad) y los comentarios que dejo ese dia. No incluye trabajos
+  cuyo lider este deshabilitado, ni trabajos de un lider cuyo perfil se
+  haya creado despues de la fecha consultada. Es lo que consume la
+  pestana "Daily".
 
 ## 3. Frontend
 
@@ -181,12 +186,16 @@ Abre `http://localhost:5173`:
    - Pestana **Daily**: un calendario a la izquierda (resalta el dia de
      hoy y el dia seleccionado; "Ir a hoy" para volver rapido) y a la
      derecha, por cada trabajo, el site, el lider, si ya actualizo el
-     avance de ese dia o no, lo que reporto (por actividad) y su
-     comentario. Cambiar el dia en el calendario recarga la tabla con
-     los avances de ese dia. El "dia" se calcula en hora de Colombia
-     (`America/Bogota`, offset fijo -05:00, sin horario de verano) tanto
-     en el backend como en el frontend, para que un avance guardado de
-     noche no aparezca clasificado en el dia siguiente por estar en UTC.
+     avance de ese dia o no, el **% de avance** general del trabajo (a
+     esa fecha), lo que reporto (por actividad) y su comentario. Cambiar
+     el dia en el calendario recarga la tabla con los avances de ese
+     dia. El "dia" se calcula en hora de Colombia (`America/Bogota`,
+     offset fijo -05:00, sin horario de verano) tanto en el backend como
+     en el frontend, para que un avance guardado de noche no aparezca
+     clasificado en el dia siguiente por estar en UTC. Un trabajo no
+     aparece en el Daily si su lider esta **deshabilitado**, ni en un
+     dia anterior a la fecha en que se creo el perfil del lider (por
+     ejemplo, si el perfil se creo hoy, no sale en el Daily de ayer).
 3. Si es `lider_cuadrilla`, ve sus trabajos asignados (solo los que
    estan en estado Asignado) como tarjetas **colapsadas** por defecto
    (ID/SMP, site, zona y el % de avance general) que se despliegan al

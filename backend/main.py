@@ -302,6 +302,11 @@ class AvanceDiarioAdminOut(BaseModel):
     actualizado: bool
     comentarios: list[str] = []
     detalle: list[AvanceResumenDetalle] = []
+    porcentaje_avance: int | None = None
+
+
+def _parsear_timestamptz(valor: str) -> datetime:
+    return datetime.fromisoformat(valor.replace("Z", "+00:00"))
 
 
 def obtener_trabajo_del_lider(trabajo_id: str, lider_id: str) -> dict:
@@ -1031,7 +1036,7 @@ def listar_avances_diarios_admin(
             supabase.table("trabajos")
             .select(
                 "id, id_smp, site, zona, lider_id, "
-                "lider:profiles!lider_id(nombre_completo, email)"
+                "lider:profiles!lider_id(nombre_completo, email, activo, created_at)"
             )
             .order("site")
             .execute()
@@ -1042,7 +1047,26 @@ def listar_avances_diarios_admin(
             detail="Error interno al obtener los trabajos.",
         ) from exc
 
-    trabajos = trabajos_resp.data or []
+    todos_los_trabajos = trabajos_resp.data or []
+
+    # Un lider deshabilitado no puede reportar nada: no tiene sentido que
+    # aparezca en el Daily. Tampoco debe aparecer en un dia anterior a la
+    # creacion de su perfil (por ejemplo, si se creo hoy, no debe salir en
+    # el Daily de ayer o antes, porque ese dia ni siquiera existia).
+    trabajos = []
+    for trabajo in todos_los_trabajos:
+        lider = trabajo.get("lider") or {}
+        if lider.get("activo") is False:
+            continue
+        creado_en = lider.get("created_at")
+        if creado_en:
+            try:
+                if _parsear_timestamptz(creado_en) >= fin:
+                    continue
+            except ValueError:
+                pass
+        trabajos.append(trabajo)
+
     if not trabajos:
         return []
 
@@ -1086,7 +1110,7 @@ def listar_avances_diarios_admin(
     try:
         actividades_resp = (
             supabase.table("actividades")
-            .select("id, actividad, hw_actividad")
+            .select("id, trabajo_id, actividad, hw_actividad, qty")
             .in_("trabajo_id", trabajo_ids)
             .execute()
         )
@@ -1096,7 +1120,41 @@ def listar_avances_diarios_admin(
             detail="Error interno al obtener las actividades.",
         ) from exc
 
-    actividades_por_id = {a["id"]: a for a in actividades_resp.data or []}
+    actividades = actividades_resp.data or []
+    actividades_por_id = {a["id"]: a for a in actividades}
+    actividades_por_trabajo: dict[str, list[dict]] = {}
+    for actividad in actividades:
+        actividades_por_trabajo.setdefault(actividad["trabajo_id"], []).append(actividad)
+
+    # Acumulado global (todo el historial hasta el final del dia
+    # consultado) por actividad, para calcular el % de avance de cada
+    # trabajo -- no solo lo reportado ese dia especifico.
+    acumulado_por_actividad: dict[str, int] = {}
+    try:
+        avances_hasta_fecha_resp = (
+            supabase.table("avances_diarios")
+            .select("id")
+            .in_("trabajo_id", trabajo_ids)
+            .lt("created_at", fin.isoformat())
+            .execute()
+        )
+        ids_hasta_fecha = [a["id"] for a in avances_hasta_fecha_resp.data or []]
+        if ids_hasta_fecha:
+            detalles_hasta_fecha_resp = (
+                supabase.table("avances_diarios_detalle")
+                .select("actividad_id, cantidad")
+                .in_("avance_diario_id", ids_hasta_fecha)
+                .execute()
+            )
+            for fila in detalles_hasta_fecha_resp.data or []:
+                acumulado_por_actividad[fila["actividad_id"]] = (
+                    acumulado_por_actividad.get(fila["actividad_id"], 0) + fila["cantidad"]
+                )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al calcular el avance acumulado.",
+        ) from exc
 
     avances_por_trabajo: dict[str, list[dict]] = {}
     for avance in avances_del_dia:
@@ -1125,6 +1183,18 @@ def listar_avances_diarios_admin(
             for actividad_id, cantidad in cantidad_por_actividad.items()
         ]
 
+        qty_total = 0.0
+        acumulado_total = 0.0
+        for actividad in actividades_por_trabajo.get(trabajo["id"], []):
+            try:
+                qty_actividad = float(actividad["qty"])
+            except (TypeError, ValueError):
+                continue
+            qty_total += qty_actividad
+            acumulado_total += min(acumulado_por_actividad.get(actividad["id"], 0), qty_actividad)
+
+        porcentaje_avance = round((acumulado_total / qty_total) * 100) if qty_total > 0 else None
+
         resultado.append(
             {
                 "trabajo_id": trabajo["id"],
@@ -1137,6 +1207,7 @@ def listar_avances_diarios_admin(
                 "actualizado": len(avances_trabajo) > 0,
                 "comentarios": comentarios,
                 "detalle": detalle_resumen,
+                "porcentaje_avance": porcentaje_avance,
             }
         )
 
