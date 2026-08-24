@@ -1038,6 +1038,7 @@ def listar_avances_diarios_admin(
                 "id, id_smp, site, zona, lider_id, "
                 "lider:profiles!lider_id(nombre_completo, email, activo, created_at)"
             )
+            .eq("estado", "asignado")
             .order("site")
             .execute()
         )
@@ -1049,6 +1050,8 @@ def listar_avances_diarios_admin(
 
     todos_los_trabajos = trabajos_resp.data or []
 
+    # Un trabajo en Finalizado o Standby no aparece en el Daily: el lider
+    # ya no esta reportando actividad ahi (igual que en su bandeja).
     # Un lider deshabilitado no puede reportar nada: no tiene sentido que
     # aparezca en el Daily. Tampoco debe aparecer en un dia anterior a la
     # creacion de su perfil (por ejemplo, si se creo hoy, no debe salir en

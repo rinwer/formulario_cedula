@@ -136,10 +136,11 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   `porcentaje_avance` general del trabajo (acumulado de todo el
   historial hasta el final de esa fecha, sobre el `qty` de sus
   actividades), el detalle de lo avanzado (`detalle`, sumado por
-  actividad) y los comentarios que dejo ese dia. No incluye trabajos
-  cuyo lider este deshabilitado, ni trabajos de un lider cuyo perfil se
-  haya creado despues de la fecha consultada. Es lo que consume la
-  pestana "Daily".
+  actividad) y los comentarios que dejo ese dia. No incluye trabajos en
+  estado **Finalizado** o **Standby** (el lider ya no deberia estar
+  reportando ahi), cuyo lider este deshabilitado, ni trabajos de un
+  lider cuyo perfil se haya creado despues de la fecha consultada. Es
+  lo que consume la pestana "Daily".
 
 ## 3. Frontend
 
