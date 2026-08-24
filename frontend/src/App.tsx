@@ -64,6 +64,8 @@ export default function App() {
     supabase.auth.signOut();
   };
 
+  const anchoAmplio = perfil?.role === "lider_cuadrilla" || tabActiva === "daily";
+
   if (cargandoSesion) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
@@ -98,7 +100,7 @@ export default function App() {
         <div
           className={
             "mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3 " +
-            (perfil.role === "lider_cuadrilla" ? "max-w-7xl" : "max-w-5xl")
+            (anchoAmplio ? "max-w-7xl" : "max-w-5xl")
           }
         >
           <div className="flex flex-wrap items-center gap-4 sm:gap-6">
@@ -139,8 +141,7 @@ export default function App() {
 
       <main
         className={
-          "mx-auto px-4 py-6 sm:py-8 " +
-          (perfil.role === "lider_cuadrilla" ? "max-w-7xl" : "max-w-5xl")
+          "mx-auto px-4 py-6 sm:py-8 " + (anchoAmplio ? "max-w-7xl" : "max-w-5xl")
         }
       >
         {perfil.role === "administrador" ? (
