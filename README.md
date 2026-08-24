@@ -136,12 +136,15 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   `porcentaje_avance` general del trabajo (acumulado de todo el
   historial hasta el final de esa fecha, sobre el `qty` de sus
   actividades), el detalle de lo avanzado (`detalle`, sumado por
-  actividad) y los comentarios que dejo ese dia. No incluye trabajos en
-  estado **Finalizado** o **Standby** (el lider ya no deberia estar
-  reportando ahi), cuyo lider este deshabilitado, ni trabajos (o
-  trabajos de un lider) creados despues de la fecha consultada — un
-  site asignado hoy no aparece en el Daily de dias anteriores. Es
-  lo que consume la pestana "Daily".
+  actividad) y los comentarios que dejo ese dia. Nunca incluye trabajos
+  (o trabajos de un lider) creados despues de la fecha consultada — un
+  site asignado hoy no aparece en el Daily de dias anteriores, eso es
+  historico y no cambia. En cambio, el estado **Finalizado**/**Standby**
+  del trabajo y el **deshabilitado** del lider son del presente: solo
+  ocultan el trabajo cuando se consulta **hoy o una fecha futura**: un
+  site que hoy esta en Standby sigue apareciendo en el Daily de un dia
+  pasado en el que si estaba activo y el lider si reporto avance. Es lo
+  que consume la pestana "Daily".
 
 ## 3. Frontend
 

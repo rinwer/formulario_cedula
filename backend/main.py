@@ -1035,10 +1035,9 @@ def listar_avances_diarios_admin(
         trabajos_resp = (
             supabase.table("trabajos")
             .select(
-                "id, id_smp, site, zona, lider_id, created_at, "
+                "id, id_smp, site, zona, lider_id, estado, created_at, "
                 "lider:profiles!lider_id(nombre_completo, email, activo, created_at)"
             )
-            .eq("estado", "asignado")
             .order("site")
             .execute()
         )
@@ -1050,18 +1049,22 @@ def listar_avances_diarios_admin(
 
     todos_los_trabajos = trabajos_resp.data or []
 
-    # Un trabajo en Finalizado o Standby no aparece en el Daily: el lider
-    # ya no esta reportando actividad ahi (igual que en su bandeja).
-    # Un lider deshabilitado no puede reportar nada: no tiene sentido que
-    # aparezca en el Daily. Tampoco debe aparecer en un dia anterior a la
-    # creacion de su perfil, ni en un dia anterior a la creacion del
-    # trabajo/site (si el site se asigno hoy, no debe salir en el Daily
-    # de ayer o antes, porque ese dia el site ni siquiera existia).
+    # "Existio para esta fecha?" es un hecho historico: aplica siempre,
+    # sin importar que fecha se consulte. Se excluye si el trabajo (o el
+    # perfil del lider) se creo despues del final del dia consultado.
+    #
+    # En cambio, "esta actualmente en Finalizado/Standby" o "el lider
+    # esta actualmente deshabilitado" son estados del PRESENTE: no deben
+    # borrar el historial de un dia pasado en el que el trabajo si estaba
+    # activo y el lider si reporto avance. Por eso ese filtro solo se
+    # aplica cuando se consulta hoy (o una fecha futura), no en el
+    # pasado.
+    hoy_colombia = datetime.now(ZONA_COLOMBIA).date()
+    consultando_presente_o_futuro = fecha_obj >= hoy_colombia
+
     trabajos = []
     for trabajo in todos_los_trabajos:
         lider = trabajo.get("lider") or {}
-        if lider.get("activo") is False:
-            continue
 
         creado_lider = lider.get("created_at")
         if creado_lider:
@@ -1078,6 +1081,12 @@ def listar_avances_diarios_admin(
                     continue
             except ValueError:
                 pass
+
+        if consultando_presente_o_futuro:
+            if trabajo.get("estado") != "asignado":
+                continue
+            if lider.get("activo") is False:
+                continue
 
         trabajos.append(trabajo)
 
