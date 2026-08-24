@@ -1035,7 +1035,7 @@ def listar_avances_diarios_admin(
         trabajos_resp = (
             supabase.table("trabajos")
             .select(
-                "id, id_smp, site, zona, lider_id, "
+                "id, id_smp, site, zona, lider_id, created_at, "
                 "lider:profiles!lider_id(nombre_completo, email, activo, created_at)"
             )
             .eq("estado", "asignado")
@@ -1054,20 +1054,31 @@ def listar_avances_diarios_admin(
     # ya no esta reportando actividad ahi (igual que en su bandeja).
     # Un lider deshabilitado no puede reportar nada: no tiene sentido que
     # aparezca en el Daily. Tampoco debe aparecer en un dia anterior a la
-    # creacion de su perfil (por ejemplo, si se creo hoy, no debe salir en
-    # el Daily de ayer o antes, porque ese dia ni siquiera existia).
+    # creacion de su perfil, ni en un dia anterior a la creacion del
+    # trabajo/site (si el site se asigno hoy, no debe salir en el Daily
+    # de ayer o antes, porque ese dia el site ni siquiera existia).
     trabajos = []
     for trabajo in todos_los_trabajos:
         lider = trabajo.get("lider") or {}
         if lider.get("activo") is False:
             continue
-        creado_en = lider.get("created_at")
-        if creado_en:
+
+        creado_lider = lider.get("created_at")
+        if creado_lider:
             try:
-                if _parsear_timestamptz(creado_en) >= fin:
+                if _parsear_timestamptz(creado_lider) >= fin:
                     continue
             except ValueError:
                 pass
+
+        creado_trabajo = trabajo.get("created_at")
+        if creado_trabajo:
+            try:
+                if _parsear_timestamptz(creado_trabajo) >= fin:
+                    continue
+            except ValueError:
+                pass
+
         trabajos.append(trabajo)
 
     if not trabajos:

@@ -138,8 +138,9 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   actividades), el detalle de lo avanzado (`detalle`, sumado por
   actividad) y los comentarios que dejo ese dia. No incluye trabajos en
   estado **Finalizado** o **Standby** (el lider ya no deberia estar
-  reportando ahi), cuyo lider este deshabilitado, ni trabajos de un
-  lider cuyo perfil se haya creado despues de la fecha consultada. Es
+  reportando ahi), cuyo lider este deshabilitado, ni trabajos (o
+  trabajos de un lider) creados despues de la fecha consultada — un
+  site asignado hoy no aparece en el Daily de dias anteriores. Es
   lo que consume la pestana "Daily".
 
 ## 3. Frontend
