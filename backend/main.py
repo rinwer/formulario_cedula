@@ -304,19 +304,31 @@ class AvanceDiarioAdminOut(BaseModel):
     porcentaje_avance: int | None = None
 
 
+class ProgramacionAsignar(BaseModel):
+    trabajo_id: str
+    lider_id: str
+    fecha: str
+
+    @field_validator("fecha")
+    @classmethod
+    def fecha_valida(cls, value: str) -> str:
+        try:
+            date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("La fecha debe tener el formato YYYY-MM-DD") from exc
+        return value
+
+
 def _parsear_timestamptz(valor: str) -> datetime:
     return datetime.fromisoformat(valor.replace("Z", "+00:00"))
 
 
 def obtener_trabajo_del_lider(trabajo_id: str, lider_id: str) -> dict:
-    """Valida que trabajo_id exista y este asignado a lider_id."""
+    """Valida que trabajo_id exista y que, segun la tabla programacion,
+    el lider este programado para trabajarlo HOY (hora Colombia)."""
     try:
         trabajo = (
-            supabase.table("trabajos")
-            .select("id, lider_id")
-            .eq("id", trabajo_id)
-            .single()
-            .execute()
+            supabase.table("trabajos").select("id").eq("id", trabajo_id).single().execute()
         )
     except Exception as exc:
         raise HTTPException(
@@ -324,10 +336,26 @@ def obtener_trabajo_del_lider(trabajo_id: str, lider_id: str) -> dict:
             detail="No se encontro el trabajo.",
         ) from exc
 
-    if trabajo.data["lider_id"] != lider_id:
+    hoy = datetime.now(ZONA_COLOMBIA).date()
+    try:
+        programado = (
+            supabase.table("programacion")
+            .select("id")
+            .eq("trabajo_id", trabajo_id)
+            .eq("lider_id", lider_id)
+            .eq("fecha", hoy.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al validar la programacion.",
+        ) from exc
+
+    if not programado.data:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Ese trabajo no esta asignado a tu usuario.",
+            detail="Ese trabajo no esta programado para ti hoy.",
         )
 
     return trabajo.data
@@ -816,15 +844,36 @@ def importar_actividades(
 def listar_mis_trabajos(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ) -> list[dict]:
-    """Trabajos asignados al usuario logueado (para el panel del
-    lider_cuadrilla), cada uno con sus actividades importadas por CSV.
-    Solo se muestran los que estan en estado 'asignado': uno marcado
-    'finalizado' o 'standby' ya no aparece en la bandeja del lider."""
+    """Trabajos programados para HOY (hora Colombia) para el usuario
+    logueado, segun la tabla programacion (asignacion diaria hecha desde
+    la pestana Programacion), cada uno con sus actividades importadas
+    por CSV. Solo se muestran los que estan en estado 'asignado': uno
+    marcado 'finalizado' o 'standby' ya no aparece en la bandeja del
+    lider aunque este programado."""
+    hoy = datetime.now(ZONA_COLOMBIA).date()
+    try:
+        programacion_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id")
+            .eq("lider_id", usuario.id)
+            .eq("fecha", hoy.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener tu programacion de hoy.",
+        ) from exc
+
+    trabajo_ids_hoy = [p["trabajo_id"] for p in programacion_resp.data or []]
+    if not trabajo_ids_hoy:
+        return []
+
     try:
         trabajos_resp = (
             supabase.table("trabajos")
             .select("id, id_smp, site, zona, lider_id, estado")
-            .eq("lider_id", usuario.id)
+            .in_("id", trabajo_ids_hoy)
             .eq("estado", "asignado")
             .order("created_at", desc=True)
             .execute()
@@ -1050,22 +1099,15 @@ def listar_avances_diarios(
     return avances
 
 
-@app.get("/api/admin/avances-diarios", response_model=list[AvanceDiarioAdminOut])
-def listar_avances_diarios_admin(
-    fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto hoy"),
-    _admin: UsuarioActual = Depends(requerir_administrador),
+def obtener_vista_trabajos_por_fecha(
+    fecha_obj: date,
+    trabajo_ids_filtro: list[str] | None = None,
 ) -> list[dict]:
-    """Vista 'Daily' del administrador: por cada trabajo, si el lider ya
-    actualizo el avance de un dia dado (por defecto hoy), cuanto reporto
-    y que comentario dejo."""
-    try:
-        fecha_obj = date.fromisoformat(fecha) if fecha else datetime.now(ZONA_COLOMBIA).date()
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
-        ) from exc
-
+    """Arma la vista de trabajos para una fecha (usada tanto por Daily
+    como por Programacion): por cada trabajo activo, quien esta
+    programado ese dia (tabla programacion), si ya actualizo el avance,
+    cuanto reporto, que comentario dejo y el % de avance acumulado a esa
+    fecha."""
     # El "dia" se define en hora de Colombia (00:00 a 23:59:59 -05:00), no
     # en UTC: un avance guardado en la noche en Colombia ya es "manana" en
     # UTC y quedaria mal clasificado si se comparara en UTC directo.
@@ -1073,15 +1115,10 @@ def listar_avances_diarios_admin(
     fin = inicio + timedelta(days=1)
 
     try:
-        trabajos_resp = (
-            supabase.table("trabajos")
-            .select(
-                "id, id_smp, site, zona, lider_id, estado, created_at, "
-                "lider:profiles!lider_id(nombre_completo, email, activo, created_at)"
-            )
-            .order("site")
-            .execute()
-        )
+        query = supabase.table("trabajos").select("id, id_smp, site, zona, estado, created_at")
+        if trabajo_ids_filtro:
+            query = query.in_("id", trabajo_ids_filtro)
+        trabajos_resp = query.order("site").execute()
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1089,30 +1126,14 @@ def listar_avances_diarios_admin(
         ) from exc
 
     todos_los_trabajos = trabajos_resp.data or []
+    if not todos_los_trabajos:
+        return []
 
     # "Existio para esta fecha?" es un hecho historico: aplica siempre,
-    # sin importar que fecha se consulte. Se excluye si el trabajo (o el
-    # perfil del lider) se creo despues del final del dia consultado.
-    #
-    # "El lider esta actualmente deshabilitado" es un estado del
-    # PRESENTE: no debe borrar el historial de un dia pasado en el que
-    # el lider si estaba habilitado y reporto avance. Por eso ese filtro
-    # solo se aplica cuando se consulta hoy (o una fecha futura).
-    hoy_colombia = datetime.now(ZONA_COLOMBIA).date()
-    consultando_presente_o_futuro = fecha_obj >= hoy_colombia
-
+    # sin importar que fecha se consulte. Se excluye si el trabajo se
+    # creo despues del final del dia consultado.
     candidatos = []
     for trabajo in todos_los_trabajos:
-        lider = trabajo.get("lider") or {}
-
-        creado_lider = lider.get("created_at")
-        if creado_lider:
-            try:
-                if _parsear_timestamptz(creado_lider) >= fin:
-                    continue
-            except ValueError:
-                pass
-
         creado_trabajo = trabajo.get("created_at")
         if creado_trabajo:
             try:
@@ -1120,10 +1141,6 @@ def listar_avances_diarios_admin(
                     continue
             except ValueError:
                 pass
-
-        if consultando_presente_o_futuro and lider.get("activo") is False:
-            continue
-
         candidatos.append(trabajo)
 
     if not candidatos:
@@ -1159,7 +1176,7 @@ def listar_avances_diarios_admin(
     for fila_historial in historial_resp.data or []:
         estado_vigente_por_trabajo[fila_historial["trabajo_id"]] = fila_historial["estado"]
 
-    trabajos = []
+    activos = []
     for trabajo in candidatos:
         # Si no hay historial previo a esta fecha (trabajo creado antes
         # de que existiera esta tabla, o antes de su primer cambio de
@@ -1168,6 +1185,66 @@ def listar_avances_diarios_admin(
         estado_vigente = estado_vigente_por_trabajo.get(trabajo["id"], trabajo.get("estado"))
         if estado_vigente != "asignado":
             continue
+        activos.append(trabajo)
+
+    if not activos:
+        return []
+
+    activo_ids = [t["id"] for t in activos]
+
+    # Quien esta programado (tabla programacion) para cada trabajo en
+    # esta fecha especifica -- es la fuente de verdad del lider del dia,
+    # no trabajos.lider_id (que ya no se llena desde la pestana Trabajos).
+    try:
+        programacion_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id, lider_id")
+            .in_("trabajo_id", activo_ids)
+            .eq("fecha", fecha_obj.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la programacion de esa fecha.",
+        ) from exc
+
+    lider_id_por_trabajo: dict[str, str] = {
+        p["trabajo_id"]: p["lider_id"] for p in programacion_resp.data or []
+    }
+
+    lider_ids = list({lid for lid in lider_id_por_trabajo.values()})
+    perfiles_lideres: dict[str, dict] = {}
+    if lider_ids:
+        try:
+            perfiles_resp = (
+                supabase.table("profiles")
+                .select("id, nombre_completo, email, activo")
+                .in_("id", lider_ids)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener los lideres programados.",
+            ) from exc
+        perfiles_lideres = {p["id"]: p for p in perfiles_resp.data or []}
+
+    # "El lider esta actualmente deshabilitado" es un estado del
+    # PRESENTE: no debe borrar el historial de un dia pasado en el que
+    # el lider si estaba habilitado y reporto avance. Por eso ese filtro
+    # solo se aplica cuando se consulta hoy (o una fecha futura).
+    hoy_colombia = datetime.now(ZONA_COLOMBIA).date()
+    consultando_presente_o_futuro = fecha_obj >= hoy_colombia
+
+    trabajos = []
+    for trabajo in activos:
+        lider_id = lider_id_por_trabajo.get(trabajo["id"])
+        lider_perfil = perfiles_lideres.get(lider_id, {}) if lider_id else {}
+        if consultando_presente_o_futuro and lider_perfil.get("activo") is False:
+            continue
+        trabajo["_lider_id"] = lider_id
+        trabajo["_lider_perfil"] = lider_perfil
         trabajos.append(trabajo)
 
     if not trabajos:
@@ -1265,7 +1342,7 @@ def listar_avances_diarios_admin(
 
     resultado = []
     for trabajo in trabajos:
-        lider = trabajo.get("lider") or {}
+        lider_perfil = trabajo.get("_lider_perfil") or {}
         avances_trabajo = avances_por_trabajo.get(trabajo["id"], [])
 
         comentarios = [a["comentario"] for a in avances_trabajo if a.get("comentario")]
@@ -1304,9 +1381,9 @@ def listar_avances_diarios_admin(
                 "id_smp": trabajo["id_smp"],
                 "site": trabajo["site"],
                 "zona": trabajo["zona"],
-                "lider_id": trabajo["lider_id"],
-                "lider_nombre": lider.get("nombre_completo"),
-                "lider_email": lider.get("email"),
+                "lider_id": trabajo.get("_lider_id"),
+                "lider_nombre": lider_perfil.get("nombre_completo"),
+                "lider_email": lider_perfil.get("email"),
                 "actualizado": len(avances_trabajo) > 0,
                 "comentarios": comentarios,
                 "detalle": detalle_resumen,
@@ -1315,3 +1392,77 @@ def listar_avances_diarios_admin(
         )
 
     return resultado
+
+
+def _parsear_fecha_query(fecha: str | None, valor_por_defecto: date) -> date:
+    if not fecha:
+        return valor_por_defecto
+    try:
+        return date.fromisoformat(fecha)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+
+@app.get("/api/admin/avances-diarios", response_model=list[AvanceDiarioAdminOut])
+def listar_avances_diarios_admin(
+    fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto hoy"),
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> list[dict]:
+    """Vista 'Daily' del administrador: por cada trabajo, si el lider ya
+    actualizo el avance de un dia dado (por defecto hoy), cuanto reporto
+    y que comentario dejo."""
+    fecha_obj = _parsear_fecha_query(fecha, datetime.now(ZONA_COLOMBIA).date())
+    return obtener_vista_trabajos_por_fecha(fecha_obj)
+
+
+@app.get("/api/admin/programacion", response_model=list[AvanceDiarioAdminOut])
+def listar_programacion(
+    fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto manana"),
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> list[dict]:
+    """Vista 'Programacion': el coordinador ve todos los trabajos activos
+    de una fecha (por defecto manana) para asignarles un lider_cuadrilla
+    con PUT /api/admin/programacion, junto con el mismo resumen de avance
+    que muestra el Daily."""
+    manana = datetime.now(ZONA_COLOMBIA).date() + timedelta(days=1)
+    fecha_obj = _parsear_fecha_query(fecha, manana)
+    return obtener_vista_trabajos_por_fecha(fecha_obj)
+
+
+@app.put("/api/admin/programacion", response_model=AvanceDiarioAdminOut)
+def asignar_programacion(
+    payload: ProgramacionAsignar,
+    admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    """Asigna (o reasigna) el lider_cuadrilla que trabaja un site en una
+    fecha dada. Un mismo trabajo+fecha solo tiene un lider: reasignar
+    actualiza la fila existente en vez de duplicarla."""
+    obtener_perfil_lider(payload.lider_id)  # valida rol lider_cuadrilla y habilitado
+    fecha_obj = date.fromisoformat(payload.fecha)
+
+    try:
+        supabase.table("programacion").upsert(
+            {
+                "trabajo_id": payload.trabajo_id,
+                "lider_id": payload.lider_id,
+                "fecha": payload.fecha,
+                "asignado_por": admin.id,
+            },
+            on_conflict="trabajo_id,fecha",
+        ).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al asignar la programacion.",
+        ) from exc
+
+    filas = obtener_vista_trabajos_por_fecha(fecha_obj, trabajo_ids_filtro=[payload.trabajo_id])
+    if not filas:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro el trabajo (o ya no esta en estado Asignado).",
+        )
+    return filas[0]

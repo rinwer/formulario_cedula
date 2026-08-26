@@ -22,10 +22,12 @@ formulario-cedula/
     ├── src/App.tsx                     Login + shell con pestanas segun rol
     ├── src/lib/supabaseClient.ts       Cliente Supabase (anon key, solo Auth)
     ├── src/components/LoginPage.tsx
-    ├── src/components/PerfilesPanel.tsx     Pestana "Perfiles" (crear/listar/editar lideres)
-    ├── src/components/AsignacionPanel.tsx   Pestana "Asignacion" (trabajos + carga CSV)
-    ├── src/components/MisTrabajosPanel.tsx  Vista del lider_cuadrilla (sus trabajos + actividades)
-    ├── src/components/DailyPanel.tsx        Pestana "Daily" (calendario + avance del dia por site)
+    ├── src/components/PerfilesPanel.tsx      Pestana "Perfiles" (crear/listar/editar lideres)
+    ├── src/components/AsignacionPanel.tsx    Pestana "Trabajos" (site/zona/estado + carga CSV)
+    ├── src/components/MisTrabajosPanel.tsx   Vista del lider_cuadrilla (sus trabajos + actividades)
+    ├── src/components/Calendario.tsx         Calendario compartido (Daily y Programacion)
+    ├── src/components/ProgramacionPanel.tsx  Pestana "Programacion" (asigna lider por dia)
+    ├── src/components/DailyPanel.tsx         Pestana "Daily" (calendario + avance del dia por site)
     └── .env.example
 ```
 
@@ -120,9 +122,13 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   espacios). Por cada trabajo afectado se reemplazan sus actividades
   anteriores por las del CSV nuevo. Responde
   `{ actividades_cargadas, sitios_no_encontrados }`.
-- `GET /api/mis-trabajos`: trabajos asignados al usuario logueado (por
-  `lider_id`), cada uno con sus actividades importadas. Es lo que
-  consume el panel del `lider_cuadrilla`.
+- `GET /api/mis-trabajos`: trabajos programados para **HOY** (hora
+  Colombia) para el usuario logueado, segun la tabla `programacion`
+  (asignados desde la pestana "Programacion" — ya no segun
+  `trabajos.lider_id`, que no se llena desde "Trabajos"), cada uno con
+  sus actividades importadas. Es lo que consume el panel del
+  `lider_cuadrilla`; si hoy no tiene nada programado, la lista sale
+  vacia.
 - `POST /api/mis-trabajos/{trabajo_id}/avances`: guarda el avance diario
   del lider (`comentario` y/o `detalles: [{actividad_id, cantidad}]`).
   Valida que el trabajo sea suyo y que cada `actividad_id` pertenezca a
@@ -152,7 +158,20 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   muestra, pero el del 22-23 no, sin importar el estado actual del
   site. El **deshabilitado** del lider, en cambio, no tiene historial:
   solo oculta el trabajo cuando se consulta **hoy o una fecha futura**.
-  Es lo que consume la pestana "Daily".
+  Es lo que consume la pestana "Daily". El lider de cada fila se resuelve
+  contra la tabla `programacion` para esa fecha especifica (quien estaba
+  programado ese dia), no contra `trabajos.lider_id`.
+- `GET /api/admin/programacion?fecha=YYYY-MM-DD` (`fecha` opcional, por
+  defecto **manana**): misma vista que `avances-diarios` de arriba
+  (mismo helper interno), pero pensada para que el coordinador programe
+  el trabajo del dia siguiente.
+- `PUT /api/admin/programacion` (`trabajo_id`, `lider_id`, `fecha`):
+  asigna (o reasigna) que `lider_cuadrilla` trabaja ese site en esa
+  fecha. Valida que `lider_id` tenga rol `lider_cuadrilla` y este
+  habilitado. Un mismo `trabajo_id` + `fecha` solo tiene un lider
+  (`unique` en la tabla `programacion`): reasignar actualiza la fila en
+  vez de duplicarla (`upsert` por `on_conflict`). Responde la fila
+  actualizada (mismo shape que `avances-diarios`/`programacion`).
 
 ## 3. Frontend
 
@@ -196,6 +215,14 @@ Abre `http://localhost:5173`:
      Finalizado o Standby deja de aparecer en la bandeja del lider de
      cuadrilla (`GET /api/mis-trabajos` solo devuelve los que estan en
      Asignado).
+   - Pestana **Programacion**: para que el coordinador asigne, dia a
+     dia, que lider de cuadrilla trabaja cada site. Mismo layout que
+     "Daily" (calendario a la izquierda, por defecto en **manana** en
+     vez de hoy) pero con la columna **Lider de cuadrilla** editable
+     (selector con los lideres habilitados); cambiarla guarda de
+     inmediato con `PUT /api/admin/programacion`. Tambien muestra
+     Actualizo, % Avance, avance del dia y comentario de esa fecha,
+     igual que Daily.
    - Pestana **Daily**: un calendario a la izquierda (resalta el dia de
      hoy y el dia seleccionado; "Ir a hoy" para volver rapido) y a la
      derecha, por cada trabajo, el site, el lider, si ya actualizo el

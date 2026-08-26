@@ -5,16 +5,18 @@ import DailyPanel from "./components/DailyPanel";
 import LoginPage from "./components/LoginPage";
 import MisTrabajosPanel from "./components/MisTrabajosPanel";
 import PerfilesPanel from "./components/PerfilesPanel";
+import ProgramacionPanel from "./components/ProgramacionPanel";
 import { supabase } from "./lib/supabaseClient";
 import { Perfil } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
-type Tab = "perfiles" | "asignacion" | "daily";
+type Tab = "perfiles" | "asignacion" | "programacion" | "daily";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "perfiles", label: "Perfiles" },
   { key: "asignacion", label: "Trabajos" },
+  { key: "programacion", label: "Programacion" },
   { key: "daily", label: "Daily" },
 ];
 
@@ -64,7 +66,8 @@ export default function App() {
     supabase.auth.signOut();
   };
 
-  const anchoAmplio = perfil?.role === "lider_cuadrilla" || tabActiva === "daily";
+  const anchoAmplio =
+    perfil?.role === "lider_cuadrilla" || tabActiva === "daily" || tabActiva === "programacion";
 
   if (cargandoSesion) {
     return (
@@ -148,6 +151,9 @@ export default function App() {
           <>
             {tabActiva === "perfiles" && <PerfilesPanel accessToken={session.access_token} />}
             {tabActiva === "asignacion" && <AsignacionPanel accessToken={session.access_token} />}
+            {tabActiva === "programacion" && (
+              <ProgramacionPanel accessToken={session.access_token} />
+            )}
             {tabActiva === "daily" && <DailyPanel accessToken={session.access_token} />}
           </>
         ) : (

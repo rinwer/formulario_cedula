@@ -262,7 +262,51 @@ alter table public.avances_diarios enable row level security;
 alter table public.avances_diarios_detalle enable row level security;
 
 -- ---------------------------------------------------------
--- 7. Bootstrap del primer administrador (ejecutar una sola vez)
+-- 7. Tabla programacion (asignacion diaria de lider a un site)
+-- ---------------------------------------------------------
+-- El coordinador (administrador) asigna, dia a dia, que lider_cuadrilla
+-- trabaja cada site. Es la fuente de verdad de "quien esta programado
+-- para que site en que fecha"; trabajos.lider_id queda en desuso para
+-- trabajos nuevos (la pestana "Trabajos" ya no lo asigna). Un mismo
+-- trabajo+fecha solo puede tener un lider (unique), y volver a asignar
+-- ese mismo trabajo+fecha actualiza la fila en vez de duplicarla.
+
+create table if not exists public.programacion (
+  id uuid primary key default gen_random_uuid(),
+  trabajo_id uuid not null references public.trabajos (id) on delete cascade,
+  lider_id uuid not null references public.profiles (id) on delete cascade,
+  fecha date not null,
+  asignado_por uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.programacion is 'Asignacion diaria: que lider_cuadrilla trabaja cada site en cada fecha.';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'programacion_trabajo_fecha_key'
+  ) then
+    alter table public.programacion
+      add constraint programacion_trabajo_fecha_key unique (trabajo_id, fecha);
+  end if;
+end $$;
+
+create index if not exists idx_programacion_trabajo_id on public.programacion (trabajo_id);
+create index if not exists idx_programacion_lider_id on public.programacion (lider_id);
+create index if not exists idx_programacion_fecha on public.programacion (fecha);
+
+alter table public.programacion enable row level security;
+
+drop trigger if exists set_programacion_updated_at on public.programacion;
+
+create trigger set_programacion_updated_at
+  before update on public.programacion
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------
+-- 8. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------
 -- No hay registro publico, asi que el primer administrador se crea a
 -- mano desde el Supabase Dashboard > Authentication > Users > Add user.
