@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { fetchAutenticado } from "../lib/api";
 import { ActividadAdmin, EstadoTrabajo, Trabajo } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
@@ -81,11 +82,7 @@ function InfoTooltip({ texto, variante = "info", label }: InfoTooltipProps) {
   );
 }
 
-type Props = {
-  accessToken: string;
-};
-
-export default function AsignacionPanel({ accessToken }: Props) {
+export default function AsignacionPanel() {
   const [idSmp, setIdSmp] = useState("");
   const [site, setSite] = useState("");
   const [zona, setZona] = useState("");
@@ -137,9 +134,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setCargandoLista(true);
     setErrorLista(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/trabajos`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(`${API_URL}/api/admin/trabajos`);
       if (!res.ok) throw new Error();
       const data: Trabajo[] = await res.json();
       setTrabajos(data);
@@ -175,12 +170,9 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setGuardando(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/admin/trabajos`, {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/trabajos`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id_smp: idSmp.trim(),
           site: site.trim(),
@@ -232,12 +224,9 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setErrorEdicion(null);
     setGuardandoEdicion(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/trabajos/${trabajoId}`, {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/trabajos/${trabajoId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id_smp: idSmpEditado.trim(),
           site: siteEditado.trim(),
@@ -268,9 +257,8 @@ export default function AsignacionPanel({ accessToken }: Props) {
       const formData = new FormData();
       formData.append("archivo", archivo);
 
-      const res = await fetch(`${API_URL}/api/admin/actividades/importar`, {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/actividades/importar`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
         body: formData,
       });
 
@@ -321,9 +309,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setCargandoActividades(true);
     setErrorActividades(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/trabajos/${trabajoId}/actividades`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(`${API_URL}/api/admin/trabajos/${trabajoId}/actividades`);
       if (!res.ok) throw new Error();
       const data: ActividadAdmin[] = await res.json();
       setActividades(data);
@@ -357,14 +343,11 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setCreandoActividad(true);
     setErrorActividades(null);
     try {
-      const res = await fetch(
+      const res = await fetchAutenticado(
         `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             actividad: nuevaActividad.trim(),
             tipificacion: nuevaTipificacion.trim() || null,
@@ -415,14 +398,11 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setGuardandoActividad(true);
     setErrorActividades(null);
     try {
-      const res = await fetch(
+      const res = await fetchAutenticado(
         `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades/${actividadId}`,
         {
           method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             actividad: actividadEditada.actividad.trim(),
             tipificacion: actividadEditada.tipificacion.trim() || null,
@@ -453,12 +433,9 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setEliminandoActividadId(actividadId);
     setErrorActividades(null);
     try {
-      const res = await fetch(
+      const res = await fetchAutenticado(
         `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades/${actividadId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
+        { method: "DELETE" }
       );
       if (res.status === 204) {
         setActividades((prev) => prev.filter((a) => a.id !== actividadId));

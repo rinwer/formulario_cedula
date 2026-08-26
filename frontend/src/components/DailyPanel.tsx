@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
+import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
 import { AvanceDiarioAdmin } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
-type Props = {
-  accessToken: string;
-};
-
-export default function DailyPanel({ accessToken }: Props) {
+export default function DailyPanel() {
   const [fecha, setFecha] = useState(hoyIso());
   const [filas, setFilas] = useState<AvanceDiarioAdmin[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -19,9 +16,9 @@ export default function DailyPanel({ accessToken }: Props) {
     setError(null);
     try {
       const parametros = new URLSearchParams({ fecha: fechaConsulta });
-      const res = await fetch(`${API_URL}/api/admin/avances-diarios?${parametros.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/avances-diarios?${parametros.toString()}`
+      );
       if (!res.ok) throw new Error();
       const data: AvanceDiarioAdmin[] = await res.json();
       setFilas(data);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
 import { AvanceDiarioAdmin, Usuario } from "../types";
 
@@ -13,11 +14,7 @@ function mananaIso(): string {
   return `${anio}-${mes}-${dia}`;
 }
 
-type Props = {
-  accessToken: string;
-};
-
-export default function ProgramacionPanel({ accessToken }: Props) {
+export default function ProgramacionPanel() {
   const [fecha, setFecha] = useState(mananaIso());
   const [filas, setFilas] = useState<AvanceDiarioAdmin[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -31,9 +28,7 @@ export default function ProgramacionPanel({ accessToken }: Props) {
 
   const cargarLideres = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/admin/usuarios`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(`${API_URL}/api/admin/usuarios`);
       if (!res.ok) throw new Error();
       const data: Usuario[] = await res.json();
       setLideres(data);
@@ -48,9 +43,9 @@ export default function ProgramacionPanel({ accessToken }: Props) {
     setError(null);
     try {
       const parametros = new URLSearchParams({ fecha: fechaConsulta });
-      const res = await fetch(`${API_URL}/api/admin/programacion?${parametros.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/programacion?${parametros.toString()}`
+      );
       if (!res.ok) throw new Error();
       const data: AvanceDiarioAdmin[] = await res.json();
       setFilas(data);
@@ -76,12 +71,9 @@ export default function ProgramacionPanel({ accessToken }: Props) {
     setErrorAsignacion(null);
     setGuardandoTrabajoId(trabajoId);
     try {
-      const res = await fetch(`${API_URL}/api/admin/programacion`, {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/programacion`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trabajo_id: trabajoId, lider_id: liderId, fecha }),
       });
 

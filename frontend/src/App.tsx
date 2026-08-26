@@ -6,6 +6,7 @@ import LoginPage from "./components/LoginPage";
 import MisTrabajosPanel from "./components/MisTrabajosPanel";
 import PerfilesPanel from "./components/PerfilesPanel";
 import ProgramacionPanel from "./components/ProgramacionPanel";
+import { fetchAutenticado } from "./lib/api";
 import { supabase } from "./lib/supabaseClient";
 import { Perfil } from "./types";
 
@@ -46,9 +47,7 @@ export default function App() {
     }
 
     let cancelado = false;
-    fetch(`${API_URL}/api/me`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
+    fetchAutenticado(`${API_URL}/api/me`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((data: Perfil) => {
         if (!cancelado) setPerfil(data);
@@ -149,15 +148,13 @@ export default function App() {
       >
         {perfil.role === "administrador" ? (
           <>
-            {tabActiva === "perfiles" && <PerfilesPanel accessToken={session.access_token} />}
-            {tabActiva === "asignacion" && <AsignacionPanel accessToken={session.access_token} />}
-            {tabActiva === "programacion" && (
-              <ProgramacionPanel accessToken={session.access_token} />
-            )}
-            {tabActiva === "daily" && <DailyPanel accessToken={session.access_token} />}
+            {tabActiva === "perfiles" && <PerfilesPanel />}
+            {tabActiva === "asignacion" && <AsignacionPanel />}
+            {tabActiva === "programacion" && <ProgramacionPanel />}
+            {tabActiva === "daily" && <DailyPanel />}
           </>
         ) : (
-          <MisTrabajosPanel accessToken={session.access_token} />
+          <MisTrabajosPanel />
         )}
       </main>
     </div>

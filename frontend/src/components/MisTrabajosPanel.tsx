@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchAutenticado } from "../lib/api";
 import { AvanceDiario, TrabajoConActividades } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
@@ -27,10 +28,9 @@ function qtyNumerico(qty: string | null): number | null {
 
 type TrabajoCardProps = {
   trabajo: TrabajoConActividades;
-  accessToken: string;
 };
 
-function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
+function TrabajoCard({ trabajo }: TrabajoCardProps) {
   const [expandido, setExpandido] = useState(false);
 
   const [avances, setAvances] = useState<Record<string, string>>({});
@@ -117,9 +117,7 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
   const cargarHistorial = async () => {
     setCargandoHistorial(true);
     try {
-      const res = await fetch(`${API_URL}/api/mis-trabajos/${trabajo.id}/avances`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(`${API_URL}/api/mis-trabajos/${trabajo.id}/avances`);
       if (!res.ok) throw new Error();
       const data: AvanceDiario[] = await res.json();
       setHistorial(data);
@@ -167,12 +165,9 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
     setMensaje(null);
     setGuardando(true);
     try {
-      const res = await fetch(`${API_URL}/api/mis-trabajos/${trabajo.id}/avances`, {
+      const res = await fetchAutenticado(`${API_URL}/api/mis-trabajos/${trabajo.id}/avances`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comentario: comentarioLimpio || null, detalles }),
       });
 
@@ -415,11 +410,7 @@ function TrabajoCard({ trabajo, accessToken }: TrabajoCardProps) {
   );
 }
 
-type Props = {
-  accessToken: string;
-};
-
-export default function MisTrabajosPanel({ accessToken }: Props) {
+export default function MisTrabajosPanel() {
   const [trabajos, setTrabajos] = useState<TrabajoConActividades[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -428,9 +419,7 @@ export default function MisTrabajosPanel({ accessToken }: Props) {
     setCargando(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/mis-trabajos`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(`${API_URL}/api/mis-trabajos`);
       if (!res.ok) throw new Error();
       const data: TrabajoConActividades[] = await res.json();
       setTrabajos(data);
@@ -467,7 +456,7 @@ export default function MisTrabajosPanel({ accessToken }: Props) {
 
       <div className="space-y-6">
         {trabajos.map((trabajo) => (
-          <TrabajoCard key={trabajo.id} trabajo={trabajo} accessToken={accessToken} />
+          <TrabajoCard key={trabajo.id} trabajo={trabajo} />
         ))}
       </div>
     </div>

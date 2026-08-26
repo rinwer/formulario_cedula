@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { fetchAutenticado } from "../lib/api";
 import { Usuario } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
@@ -16,11 +17,7 @@ const ROLE_LABEL: Record<string, string> = {
   lider_cuadrilla: "Lider de cuadrilla",
 };
 
-type Props = {
-  accessToken: string;
-};
-
-export default function PerfilesPanel({ accessToken }: Props) {
+export default function PerfilesPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombreCompleto, setNombreCompleto] = useState("");
@@ -75,12 +72,9 @@ export default function PerfilesPanel({ accessToken }: Props) {
     setErrorEdicion(null);
     setGuardandoEdicion(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/usuarios/${usuarioId}`, {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/usuarios/${usuarioId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nombre_completo: nombreEditado.trim(),
           email: emailEditado.trim(),
@@ -109,9 +103,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
     setCargandoLista(true);
     setErrorLista(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/usuarios`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetchAutenticado(`${API_URL}/api/admin/usuarios`);
       if (!res.ok) throw new Error();
       const data: Usuario[] = await res.json();
       setUsuarios(data);
@@ -148,12 +140,9 @@ export default function PerfilesPanel({ accessToken }: Props) {
     setGuardando(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/admin/usuarios`, {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/usuarios`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim(),
           password,
