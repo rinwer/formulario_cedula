@@ -101,12 +101,17 @@ create table if not exists public.trabajos (
   id_smp text not null check (length(trim(id_smp)) > 0),
   site text not null unique check (length(trim(site)) > 0),
   zona text not null check (length(trim(zona)) > 0),
-  lider_id uuid not null references public.profiles (id) on delete cascade,
+  lider_id uuid references public.profiles (id) on delete cascade,
   asignado_por uuid references public.profiles (id) on delete set null,
   estado text not null default 'asignado',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- La pestana "Trabajos" (antes "Asignacion") ya no asigna lider al crear
+-- el trabajo; el lider se asigna despues, en otro flujo. Por eso
+-- lider_id paso a ser opcional.
+alter table public.trabajos alter column lider_id drop not null;
 
 -- Por si la tabla ya existia con el esquema anterior (titulo,
 -- descripcion, estado con otros valores): se agregan las columnas
@@ -146,7 +151,7 @@ end $$;
 comment on table public.trabajos is 'Trabajos asignados por un administrador a un lider_cuadrilla.';
 comment on column public.trabajos.id_smp is 'Identificador de la orden/SMP del trabajo.';
 comment on column public.trabajos.site is 'Nombre del site; debe coincidir con la columna SITE del CSV de actividades.';
-comment on column public.trabajos.lider_id is 'profiles.id del lider_cuadrilla responsable del trabajo.';
+comment on column public.trabajos.lider_id is 'profiles.id del lider_cuadrilla responsable del trabajo; puede ser nulo hasta que se asigne.';
 comment on column public.trabajos.asignado_por is 'profiles.id del administrador que creo/asigno el trabajo.';
 comment on column public.trabajos.estado is 'asignado (visible para el lider), finalizado o standby (ya no aparecen en su bandeja).';
 

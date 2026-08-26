@@ -22,7 +22,7 @@ export type Trabajo = {
   id_smp: string;
   site: string;
   zona: string;
-  lider_id: string;
+  lider_id: string | null;
   estado: EstadoTrabajo;
   lider_nombre: string | null;
   lider_email: string | null;
@@ -65,7 +65,7 @@ export type AvanceDiarioAdmin = {
   id_smp: string;
   site: string;
   zona: string;
-  lider_id: string;
+  lider_id: string | null;
   lider_nombre: string | null;
   lider_email: string | null;
   actualizado: boolean;

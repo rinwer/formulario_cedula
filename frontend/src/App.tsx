@@ -14,7 +14,7 @@ type Tab = "perfiles" | "asignacion" | "daily";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "perfiles", label: "Perfiles" },
-  { key: "asignacion", label: "Asignacion" },
+  { key: "asignacion", label: "Trabajos" },
   { key: "daily", label: "Daily" },
 ];
 

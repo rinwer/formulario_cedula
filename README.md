@@ -103,13 +103,14 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
 (cualquier usuario logueado, pero solo sobre trabajos asignados a el mismo).
 
 - `GET /api/admin/trabajos`: lista todos los trabajos (`id_smp`, `site`,
-  `zona`, lider asignado) via embedding de PostgREST sobre la FK
-  `trabajos.lider_id -> profiles.id`.
+  `zona`, `estado`, lider asignado si lo tiene) via embedding de
+  PostgREST sobre la FK `trabajos.lider_id -> profiles.id`.
 - `POST /api/admin/trabajos` / `PUT /api/admin/trabajos/{id}`: crea o
-  actualiza un trabajo (`id_smp`, `site`, `zona`, `lider_id`, `estado` —
-  `asignado` por defecto, `finalizado` o `standby`). Valida que
-  `lider_id` exista, tenga rol `lider_cuadrilla` y este habilitado (400 si
-  no). `site` es unico: crear/editar con un site repetido devuelve `409`.
+  actualiza un trabajo (`id_smp`, `site`, `zona`, `estado` — `asignado`
+  por defecto, `finalizado` o `standby`). La pestana "Trabajos" ya no
+  asigna `lider_id` aqui (queda `null` hasta que se asigne por otro
+  medio); `site` es unico: crear/editar con un site repetido devuelve
+  `409`.
 - `POST /api/admin/actividades/importar` (`multipart/form-data`, campo
   `archivo`): importa un CSV con columnas `SITE, ACTIVIDAD, TIPIFICACION,
   HW-ACTIVIDAD, QTY, AVANCE`. El delimitador se detecta solo probando
@@ -187,14 +188,14 @@ Abre `http://localhost:5173`:
      existentes. Cada uno tiene boton **Editar** para cambiar nombre,
      correo, contrasena (opcional, se deja en blanco para no cambiarla),
      rol, y un check **Habilitado** para permitir o bloquear su login.
-   - Pestana **Asignacion**: formulario para crear un trabajo (ID/SMP,
-     site, zona, lider de cuadrilla — el selector solo muestra lideres
-     habilitados), un boton para cargar el CSV de actividades, y la
-     tabla de trabajos asignados (editable: ID/SMP, site, lider, zona,
-     **estado**). El estado es **Asignado** (default), **Finalizado** o
-     **Standby**; un trabajo en Finalizado o Standby deja de aparecer en
-     la bandeja del lider de cuadrilla (`GET /api/mis-trabajos` solo
-     devuelve los que estan en Asignado).
+   - Pestana **Trabajos**: formulario para crear un trabajo (ID/SMP,
+     site, zona — sin lider de cuadrilla; eso se asigna por otro medio),
+     un boton para cargar el CSV de actividades, y la tabla de trabajos
+     (editable: ID/SMP, site, zona, **estado**). El estado es
+     **Asignado** (default), **Finalizado** o **Standby**; un trabajo en
+     Finalizado o Standby deja de aparecer en la bandeja del lider de
+     cuadrilla (`GET /api/mis-trabajos` solo devuelve los que estan en
+     Asignado).
    - Pestana **Daily**: un calendario a la izquierda (resalta el dia de
      hoy y el dia seleccionado; "Ir a hoy" para volver rapido) y a la
      derecha, por cada trabajo, el site, el lider, si ya actualizo el

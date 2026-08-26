@@ -195,7 +195,6 @@ class TrabajoCreate(BaseModel):
     id_smp: str = Field(..., min_length=1)
     site: str = Field(..., min_length=1)
     zona: str = Field(..., min_length=1)
-    lider_id: str
     estado: str = "asignado"
 
     @field_validator("id_smp")
@@ -230,7 +229,7 @@ class TrabajoOut(BaseModel):
     id_smp: str
     site: str
     zona: str
-    lider_id: str
+    lider_id: str | None = None
     estado: str = "asignado"
     lider_nombre: str | None = None
     lider_email: str | None = None
@@ -296,7 +295,7 @@ class AvanceDiarioAdminOut(BaseModel):
     id_smp: str
     site: str
     zona: str
-    lider_id: str
+    lider_id: str | None = None
     lider_nombre: str | None = None
     lider_email: str | None = None
     actualizado: bool
@@ -364,6 +363,24 @@ def obtener_perfil_lider(lider_id: str) -> dict:
         )
 
     return perfil.data
+
+
+def obtener_info_lider_opcional(lider_id: str | None) -> dict:
+    """Nombre/email del lider para mostrar en la respuesta de un trabajo,
+    o vacio si el trabajo todavia no tiene lider asignado."""
+    if not lider_id:
+        return {}
+    try:
+        perfil = (
+            supabase.table("profiles")
+            .select("nombre_completo, email")
+            .eq("id", lider_id)
+            .single()
+            .execute()
+        )
+    except Exception:
+        return {}
+    return perfil.data or {}
 
 
 def fila_trabajo_a_salida(fila: dict) -> dict:
@@ -568,8 +585,6 @@ def crear_trabajo(
     payload: TrabajoCreate,
     admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
-    lider = obtener_perfil_lider(payload.lider_id)
-
     try:
         response = (
             supabase.table("trabajos")
@@ -578,7 +593,6 @@ def crear_trabajo(
                     "id_smp": payload.id_smp,
                     "site": payload.site,
                     "zona": payload.zona,
-                    "lider_id": payload.lider_id,
                     "estado": payload.estado,
                     "asignado_por": admin.id,
                 }
@@ -612,8 +626,9 @@ def crear_trabajo(
     except Exception:
         pass  # el historial es para el Daily; no debe tumbar la creacion del trabajo
 
-    fila["lider_nombre"] = lider["nombre_completo"]
-    fila["lider_email"] = lider["email"]
+    lider = obtener_info_lider_opcional(fila.get("lider_id"))
+    fila["lider_nombre"] = lider.get("nombre_completo")
+    fila["lider_email"] = lider.get("email")
     return fila
 
 
@@ -623,8 +638,6 @@ def actualizar_trabajo(
     payload: TrabajoUpdate,
     _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
-    lider = obtener_perfil_lider(payload.lider_id)
-
     estado_anterior = None
     try:
         actual_resp = (
@@ -642,7 +655,6 @@ def actualizar_trabajo(
                     "id_smp": payload.id_smp,
                     "site": payload.site,
                     "zona": payload.zona,
-                    "lider_id": payload.lider_id,
                     "estado": payload.estado,
                 }
             )
@@ -679,8 +691,9 @@ def actualizar_trabajo(
             pass
 
     fila = response.data[0]
-    fila["lider_nombre"] = lider["nombre_completo"]
-    fila["lider_email"] = lider["email"]
+    lider = obtener_info_lider_opcional(fila.get("lider_id"))
+    fila["lider_nombre"] = lider.get("nombre_completo")
+    fila["lider_email"] = lider.get("email")
     return fila
 
 

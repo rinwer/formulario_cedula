@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { EstadoTrabajo, Trabajo, Usuario } from "../types";
+import { EstadoTrabajo, Trabajo } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -86,15 +86,10 @@ type Props = {
 };
 
 export default function AsignacionPanel({ accessToken }: Props) {
-  const [lideres, setLideres] = useState<Usuario[]>([]);
-
   const [idSmp, setIdSmp] = useState("");
   const [site, setSite] = useState("");
   const [zona, setZona] = useState("");
-  const [liderId, setLiderId] = useState("");
-  const [errores, setErrores] = useState<{ idSmp?: string; site?: string; zona?: string; lider?: string }>(
-    {}
-  );
+  const [errores, setErrores] = useState<{ idSmp?: string; site?: string; zona?: string }>({});
   const [guardando, setGuardando] = useState(false);
   const [popup, setPopup] = useState<PopupState>(initialPopup);
 
@@ -106,7 +101,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
   const [idSmpEditado, setIdSmpEditado] = useState("");
   const [siteEditado, setSiteEditado] = useState("");
   const [zonaEditada, setZonaEditada] = useState("");
-  const [liderEditado, setLiderEditado] = useState("");
   const [estadoEditado, setEstadoEditado] = useState<EstadoTrabajo>("asignado");
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
@@ -115,22 +109,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
   const [subiendoCsv, setSubiendoCsv] = useState(false);
 
   const cerrarPopup = () => setPopup(initialPopup);
-
-  const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
-
-  const cargarLideres = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/usuarios`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) throw new Error();
-      const data: Usuario[] = await res.json();
-      setLideres(data);
-    } catch {
-      // La lista de trabajos igual muestra el nombre del lider; si esto
-      // falla solo se pierde el selector para crear/editar trabajos.
-    }
-  };
 
   const cargarTrabajos = async () => {
     setCargandoLista(true);
@@ -150,7 +128,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
   };
 
   useEffect(() => {
-    cargarLideres();
     cargarTrabajos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -160,7 +137,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
     if (!idSmp.trim()) nuevosErrores.idSmp = "El ID / SMP es obligatorio.";
     if (!site.trim()) nuevosErrores.site = "El site es obligatorio.";
     if (!zona.trim()) nuevosErrores.zona = "La zona es obligatoria.";
-    if (!liderId) nuevosErrores.lider = "Selecciona un lider de cuadrilla.";
     return nuevosErrores;
   };
 
@@ -186,23 +162,21 @@ export default function AsignacionPanel({ accessToken }: Props) {
           id_smp: idSmp.trim(),
           site: site.trim(),
           zona: zona.trim(),
-          lider_id: liderId,
         }),
       });
 
       if (res.status === 201) {
-        setPopup({ visible: true, type: "success", message: "El trabajo se asigno con exito." });
+        setPopup({ visible: true, type: "success", message: "El trabajo se creo con exito." });
         setIdSmp("");
         setSite("");
         setZona("");
-        setLiderId("");
         cargarTrabajos();
       } else {
         const data = await res.json().catch(() => null);
         setPopup({
           visible: true,
           type: "error",
-          message: data?.detail ?? "Ocurrio un error al asignar el trabajo.",
+          message: data?.detail ?? "Ocurrio un error al crear el trabajo.",
         });
       }
     } catch {
@@ -221,7 +195,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
     setIdSmpEditado(trabajo.id_smp);
     setSiteEditado(trabajo.site);
     setZonaEditada(trabajo.zona);
-    setLiderEditado(trabajo.lider_id);
     setEstadoEditado(trabajo.estado);
     setErrorEdicion(null);
   };
@@ -232,7 +205,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
   };
 
   const guardarEdicion = async (trabajoId: string) => {
-    if (!idSmpEditado.trim() || !siteEditado.trim() || !zonaEditada.trim() || !liderEditado) return;
+    if (!idSmpEditado.trim() || !siteEditado.trim() || !zonaEditada.trim()) return;
     setErrorEdicion(null);
     setGuardandoEdicion(true);
     try {
@@ -246,7 +219,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
           id_smp: idSmpEditado.trim(),
           site: siteEditado.trim(),
           zona: zonaEditada.trim(),
-          lider_id: liderEditado,
           estado: estadoEditado,
         }),
       });
@@ -289,7 +261,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
           mensaje += ` No se encontro asignacion para estos sites: ${sinCoincidencia.join(", ")}.`;
           if (cargadas === 0) {
             mensaje +=
-              ' Primero haz clic en "Asignar trabajo" para crear ese site y despues vuelve a cargar el CSV.';
+              ' Primero haz clic en "Asignar" para crear ese site y despues vuelve a cargar el CSV.';
           }
         }
         // Si no se cargo nada, no es realmente un exito aunque la
@@ -376,38 +348,13 @@ export default function AsignacionPanel({ accessToken }: Props) {
             {errores.zona && <p className="text-sm text-red-600 mt-1">{errores.zona}</p>}
           </div>
 
-          <div>
-            <label htmlFor="lider" className="block text-sm font-medium text-slate-700 mb-1">
-              Lider de cuadrilla
-            </label>
-            <select
-              id="lider"
-              value={liderId}
-              onChange={(e) => setLiderId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Selecciona un lider</option>
-              {lideresHabilitados.map((lider) => (
-                <option key={lider.id} value={lider.id}>
-                  {lider.nombre_completo}
-                </option>
-              ))}
-            </select>
-            {errores.lider && <p className="text-sm text-red-600 mt-1">{errores.lider}</p>}
-            {lideresHabilitados.length === 0 && (
-              <p className="text-xs text-slate-500 mt-1">
-                No hay lideres de cuadrilla habilitados. Crea o habilita uno en la pestana Perfiles.
-              </p>
-            )}
-          </div>
-
           <div className="sm:col-span-2">
             <button
               type="submit"
               disabled={guardando}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium px-4 py-2 rounded-md transition-colors"
             >
-              {guardando ? "Asignando..." : "Asignar trabajo"}
+              {guardando ? "Asignando..." : "Asignar"}
             </button>
           </div>
         </form>
@@ -419,8 +366,8 @@ export default function AsignacionPanel({ accessToken }: Props) {
               variante="advertencia"
               label="Ayuda: cuando se puede cargar el CSV"
               texto={
-                'Si el site es nuevo, primero haz clic en "Asignar trabajo" arriba para crearlo. ' +
-                'El CSV solo vincula actividades a sites que ya existan en "Trabajos asignados"; ' +
+                'Si el site es nuevo, primero haz clic en "Asignar" arriba para crearlo. ' +
+                'El CSV solo vincula actividades a sites que ya existan en "Trabajos"; ' +
                 "si lo subes antes, no se carga nada aunque el archivo este bien."
               }
             />
@@ -453,7 +400,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
       <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-slate-800">Trabajos asignados</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Trabajos</h2>
           <button
             onClick={cargarTrabajos}
             disabled={cargandoLista}
@@ -466,7 +413,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
         {errorLista && <p className="text-sm text-red-600 mb-4">{errorLista}</p>}
 
         {!errorLista && trabajos.length === 0 && !cargandoLista && (
-          <p className="text-sm text-slate-500">Todavia no hay trabajos asignados.</p>
+          <p className="text-sm text-slate-500">Todavia no hay trabajos creados.</p>
         )}
 
         {trabajos.length > 0 && (
@@ -483,7 +430,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
                 <tr className="border-b border-slate-200 text-slate-500">
                   <th className="py-2 pr-4 font-medium">ID / SMP</th>
                   <th className="py-2 pr-4 font-medium">Site</th>
-                  <th className="py-2 pr-4 font-medium">Lider de cuadrilla</th>
                   <th className="py-2 pr-4 font-medium">Zona</th>
                   <th className="py-2 pr-4 font-medium">Estado</th>
                   <th className="py-2 pr-4 font-medium text-right">Acciones</th>
@@ -517,28 +463,6 @@ export default function AsignacionPanel({ accessToken }: Props) {
                           />
                         ) : (
                           trabajo.site
-                        )}
-                      </td>
-                      <td className="py-2 pr-4 text-slate-700">
-                        {editando ? (
-                          <select
-                            value={liderEditado}
-                            onChange={(e) => setLiderEditado(e.target.value)}
-                            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            {!lideresHabilitados.some((l) => l.id === trabajo.lider_id) && (
-                              <option value={trabajo.lider_id}>
-                                {trabajo.lider_nombre ?? trabajo.lider_email} (deshabilitado)
-                              </option>
-                            )}
-                            {lideresHabilitados.map((lider) => (
-                              <option key={lider.id} value={lider.id}>
-                                {lider.nombre_completo}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          trabajo.lider_nombre ?? trabajo.lider_email ?? "—"
                         )}
                       </td>
                       <td className="py-2 pr-4 text-slate-700">
@@ -590,8 +514,7 @@ export default function AsignacionPanel({ accessToken }: Props) {
                                   guardandoEdicion ||
                                   !idSmpEditado.trim() ||
                                   !siteEditado.trim() ||
-                                  !zonaEditada.trim() ||
-                                  !liderEditado
+                                  !zonaEditada.trim()
                                 }
                                 className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 px-3 py-1 rounded-md"
                               >
