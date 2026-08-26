@@ -175,6 +175,29 @@ create trigger set_trabajos_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------
+-- 4b. Tabla trabajos_historial_estado (cuando cambio Asignado/Finalizado/Standby)
+-- ---------------------------------------------------------
+-- trabajos.estado solo guarda el estado ACTUAL. Para saber que estado
+-- tenia un trabajo en una fecha pasada (y asi no ocultar del Daily un
+-- dia en el que si estaba Asignado, ni mostrar un dia en el que estaba
+-- en Standby), el backend guarda aqui un registro cada vez que el
+-- estado cambia de verdad (al crear el trabajo, y en cada PUT donde el
+-- estado sea distinto al anterior).
+
+create table if not exists public.trabajos_historial_estado (
+  id uuid primary key default gen_random_uuid(),
+  trabajo_id uuid not null references public.trabajos (id) on delete cascade,
+  estado text not null check (estado in ('asignado', 'finalizado', 'standby')),
+  created_at timestamptz not null default now()
+);
+
+comment on table public.trabajos_historial_estado is 'Historial de cambios de trabajos.estado, para saber el estado vigente en una fecha pasada.';
+
+create index if not exists idx_historial_estado_trabajo_id on public.trabajos_historial_estado (trabajo_id);
+
+alter table public.trabajos_historial_estado enable row level security;
+
+-- ---------------------------------------------------------
 -- 5. Tabla actividades (importadas por CSV, ligadas a un trabajo por site)
 -- ---------------------------------------------------------
 -- El CSV trae: SITE, ACTIVIDAD, TIPIFICACION, HW-ACTIVIDAD, QTY, AVANCE.

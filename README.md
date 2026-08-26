@@ -139,12 +139,19 @@ salvo `GET /api/mis-trabajos` y los endpoints de `/api/mis-trabajos/{id}/avances
   actividad) y los comentarios que dejo ese dia. Nunca incluye trabajos
   (o trabajos de un lider) creados despues de la fecha consultada — un
   site asignado hoy no aparece en el Daily de dias anteriores, eso es
-  historico y no cambia. En cambio, el estado **Finalizado**/**Standby**
-  del trabajo y el **deshabilitado** del lider son del presente: solo
-  ocultan el trabajo cuando se consulta **hoy o una fecha futura**: un
-  site que hoy esta en Standby sigue apareciendo en el Daily de un dia
-  pasado en el que si estaba activo y el lider si reporto avance. Es lo
-  que consume la pestana "Daily".
+  historico y no cambia.
+
+  El estado **Finalizado**/**Standby** se valida con precision de dia:
+  la tabla `trabajos_historial_estado` guarda cada vez que el estado de
+  un trabajo cambia de verdad (al crearlo y en cada `PUT` donde el
+  estado sea distinto al anterior), y el Daily reconstruye el estado
+  vigente en la fecha consultada a partir de ese historial — no del
+  estado actual. Asi, si un site estuvo en Standby del 22 al 23 de
+  agosto y se reactivo el 24, el Daily del 21 y del 24 en adelante lo
+  muestra, pero el del 22-23 no, sin importar el estado actual del
+  site. El **deshabilitado** del lider, en cambio, no tiene historial:
+  solo oculta el trabajo cuando se consulta **hoy o una fecha futura**.
+  Es lo que consume la pestana "Daily".
 
 ## 3. Frontend
 

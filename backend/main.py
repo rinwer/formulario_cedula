@@ -604,6 +604,14 @@ def crear_trabajo(
         )
 
     fila = response.data[0]
+
+    try:
+        supabase.table("trabajos_historial_estado").insert(
+            {"trabajo_id": fila["id"], "estado": payload.estado}
+        ).execute()
+    except Exception:
+        pass  # el historial es para el Daily; no debe tumbar la creacion del trabajo
+
     fila["lider_nombre"] = lider["nombre_completo"]
     fila["lider_email"] = lider["email"]
     return fila
@@ -616,6 +624,15 @@ def actualizar_trabajo(
     _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
     lider = obtener_perfil_lider(payload.lider_id)
+
+    estado_anterior = None
+    try:
+        actual_resp = (
+            supabase.table("trabajos").select("estado").eq("id", trabajo_id).single().execute()
+        )
+        estado_anterior = actual_resp.data["estado"] if actual_resp.data else None
+    except Exception:
+        pass
 
     try:
         response = (
@@ -649,6 +666,17 @@ def actualizar_trabajo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No se encontro un trabajo con ese id.",
         )
+
+    # Solo se guarda un registro nuevo en el historial cuando el estado
+    # realmente cambia (no en cada edicion de site/zona/lider), para que
+    # el Daily sepa exactamente desde que dia rigio cada estado.
+    if estado_anterior is not None and estado_anterior != payload.estado:
+        try:
+            supabase.table("trabajos_historial_estado").insert(
+                {"trabajo_id": trabajo_id, "estado": payload.estado}
+            ).execute()
+        except Exception:
+            pass
 
     fila = response.data[0]
     fila["lider_nombre"] = lider["nombre_completo"]
@@ -1053,16 +1081,14 @@ def listar_avances_diarios_admin(
     # sin importar que fecha se consulte. Se excluye si el trabajo (o el
     # perfil del lider) se creo despues del final del dia consultado.
     #
-    # En cambio, "esta actualmente en Finalizado/Standby" o "el lider
-    # esta actualmente deshabilitado" son estados del PRESENTE: no deben
-    # borrar el historial de un dia pasado en el que el trabajo si estaba
-    # activo y el lider si reporto avance. Por eso ese filtro solo se
-    # aplica cuando se consulta hoy (o una fecha futura), no en el
-    # pasado.
+    # "El lider esta actualmente deshabilitado" es un estado del
+    # PRESENTE: no debe borrar el historial de un dia pasado en el que
+    # el lider si estaba habilitado y reporto avance. Por eso ese filtro
+    # solo se aplica cuando se consulta hoy (o una fecha futura).
     hoy_colombia = datetime.now(ZONA_COLOMBIA).date()
     consultando_presente_o_futuro = fecha_obj >= hoy_colombia
 
-    trabajos = []
+    candidatos = []
     for trabajo in todos_los_trabajos:
         lider = trabajo.get("lider") or {}
 
@@ -1082,12 +1108,53 @@ def listar_avances_diarios_admin(
             except ValueError:
                 pass
 
-        if consultando_presente_o_futuro:
-            if trabajo.get("estado") != "asignado":
-                continue
-            if lider.get("activo") is False:
-                continue
+        if consultando_presente_o_futuro and lider.get("activo") is False:
+            continue
 
+        candidatos.append(trabajo)
+
+    if not candidatos:
+        return []
+
+    # El estado (Asignado/Finalizado/Standby) SI se valida para
+    # cualquier fecha, pero usando el estado que el trabajo tenia EN ESE
+    # DIA, no el actual: un site que hoy esta en Standby no debe
+    # desaparecer del Daily de un dia pasado en el que si estaba
+    # Asignado, y si se reactiva, debe volver a aparecer desde el dia de
+    # la reactivacion (no antes). trabajos.estado solo guarda el actual,
+    # asi que se reconstruye el estado vigente a esa fecha con el
+    # historial de cambios.
+    candidato_ids = [t["id"] for t in candidatos]
+    try:
+        historial_resp = (
+            supabase.table("trabajos_historial_estado")
+            .select("trabajo_id, estado, created_at")
+            .in_("trabajo_id", candidato_ids)
+            .lt("created_at", fin.isoformat())
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el historial de estados.",
+        ) from exc
+
+    # Al iterar en orden ascendente de created_at, el ultimo valor que
+    # quede guardado por trabajo_id es el mas reciente antes de "fin".
+    estado_vigente_por_trabajo: dict[str, str] = {}
+    for fila_historial in historial_resp.data or []:
+        estado_vigente_por_trabajo[fila_historial["trabajo_id"]] = fila_historial["estado"]
+
+    trabajos = []
+    for trabajo in candidatos:
+        # Si no hay historial previo a esta fecha (trabajo creado antes
+        # de que existiera esta tabla, o antes de su primer cambio de
+        # estado registrado), se usa el estado actual como mejor
+        # aproximacion disponible.
+        estado_vigente = estado_vigente_por_trabajo.get(trabajo["id"], trabajo.get("estado"))
+        if estado_vigente != "asignado":
+            continue
         trabajos.append(trabajo)
 
     if not trabajos:
