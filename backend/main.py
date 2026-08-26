@@ -123,12 +123,13 @@ def requerir_administrador(
 # ---------------------------------------------------------------
 
 
-class LiderCuadrillaCreate(BaseModel):
+class UsuarioCreate(BaseModel):
     email: EmailStr
     password: str = Field(
         ..., min_length=8, description="Contrasena temporal para el nuevo usuario"
     )
     nombre_completo: str = Field(..., min_length=1)
+    role: str = "lider_cuadrilla"
 
     @field_validator("nombre_completo")
     @classmethod
@@ -136,6 +137,13 @@ class LiderCuadrillaCreate(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("El nombre completo no puede estar vacio")
+        return value
+
+    @field_validator("role")
+    @classmethod
+    def role_valido(cls, value: str) -> str:
+        if value not in ("administrador", "lider_cuadrilla"):
+            raise ValueError("El rol debe ser administrador o lider_cuadrilla")
         return value
 
 
@@ -529,15 +537,15 @@ def actualizar_usuario(
 
 
 @app.post(
-    "/api/admin/lideres",
+    "/api/admin/usuarios",
     response_model=UsuarioOut,
     status_code=status.HTTP_201_CREATED,
 )
-def crear_lider_cuadrilla(
-    payload: LiderCuadrillaCreate,
+def crear_usuario(
+    payload: UsuarioCreate,
     _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
-    """Crea un usuario con rol lider_cuadrilla en Supabase Auth.
+    """Crea un usuario (lider_cuadrilla o administrador) en Supabase Auth.
 
     Usa supabase.auth.admin (service_role key) para dar de alta al usuario,
     por lo que la sesion del administrador que hace la peticion (su propio
@@ -550,7 +558,7 @@ def crear_lider_cuadrilla(
                 "password": payload.password,
                 "email_confirm": True,
                 "user_metadata": {"nombre_completo": payload.nombre_completo},
-                "app_metadata": {"role": "lider_cuadrilla"},
+                "app_metadata": {"role": payload.role},
             }
         )
     except Exception as exc:
@@ -576,7 +584,7 @@ def crear_lider_cuadrilla(
         "id": nuevo_usuario.id,
         "email": nuevo_usuario.email,
         "nombre_completo": payload.nombre_completo,
-        "role": "lider_cuadrilla",
+        "role": payload.role,
         "activo": True,
     }
 

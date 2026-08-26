@@ -61,9 +61,9 @@ uvicorn main:app --reload --port 8000
 
 Prueba: `http://localhost:8000/api/health` debe responder `{"status":"ok"}`.
 
-### Endpoint: alta de lider_cuadrilla
+### Endpoint: alta de usuario (lider_cuadrilla o administrador)
 
-`POST /api/admin/lideres`
+`POST /api/admin/usuarios`
 
 Requiere header `Authorization: Bearer <access_token>` de un usuario cuyo
 `profile.role` sea `administrador` (se valida contra Supabase Auth y contra
@@ -71,14 +71,17 @@ Requiere header `Authorization: Bearer <access_token>` de un usuario cuyo
 
 ```json
 {
-  "email": "lider1@ejemplo.com",
+  "email": "usuario1@ejemplo.com",
   "password": "unaContrasenaTemporal123",
-  "nombre_completo": "Juan Perez"
+  "nombre_completo": "Juan Perez",
+  "role": "lider_cuadrilla"
 }
 ```
 
-Respuestas: `201` con el usuario creado, `401` sin token o token invalido,
-`403` si quien llama no es administrador, `409` si el correo ya existe.
+`role` es `lider_cuadrilla` por defecto; tambien acepta `administrador`
+("Coordinador" en la interfaz). Respuestas: `201` con el usuario creado,
+`401` sin token o token invalido, `403` si quien llama no es
+administrador, `409` si el correo ya existe.
 
 ### Endpoints adicionales
 
@@ -202,11 +205,13 @@ Abre `http://localhost:5173`:
 
 1. Pantalla de **login** (correo + contrasena).
 2. Si el usuario logueado es `administrador`, aparece en la barra superior:
-   - Pestana **Perfiles**: formulario para crear un `lider_cuadrilla`
-     (nombre, correo, contrasena temporal) y tabla con todos los usuarios
-     existentes. Cada uno tiene boton **Editar** para cambiar nombre,
-     correo, contrasena (opcional, se deja en blanco para no cambiarla),
-     rol, y un check **Habilitado** para permitir o bloquear su login.
+   - Pestana **Perfiles**: formulario "Nuevo usuario" (nombre, correo,
+     **perfil** — Lider de cuadrilla o Coordinador — y contrasena
+     temporal) y tabla con todos los usuarios existentes. Cada uno tiene
+     boton **Editar** para cambiar nombre, correo, contrasena (opcional,
+     se deja en blanco para no cambiarla), rol, y un check **Habilitado**
+     para permitir o bloquear su login. "Coordinador" en la interfaz es
+     el rol `administrador`.
    - Pestana **Trabajos**: formulario para crear un trabajo (ID/SMP,
      site, zona — sin lider de cuadrilla; eso se asigna por otro medio),
      un boton para cargar el CSV de actividades, y la tabla de trabajos

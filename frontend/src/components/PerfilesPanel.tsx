@@ -12,7 +12,7 @@ type PopupState = {
 const initialPopup: PopupState = { visible: false, type: "success", message: "" };
 
 const ROLE_LABEL: Record<string, string> = {
-  administrador: "Administrador",
+  administrador: "Coordinador",
   lider_cuadrilla: "Lider de cuadrilla",
 };
 
@@ -24,6 +24,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombreCompleto, setNombreCompleto] = useState("");
+  const [role, setRole] = useState<"administrador" | "lider_cuadrilla">("lider_cuadrilla");
   const [errores, setErrores] = useState<{ email?: string; password?: string; nombre?: string }>(
     {}
   );
@@ -147,7 +148,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
     setGuardando(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/admin/lideres`, {
+      const res = await fetch(`${API_URL}/api/admin/usuarios`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -157,6 +158,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
           email: email.trim(),
           password,
           nombre_completo: nombreCompleto.trim(),
+          role,
         }),
       });
 
@@ -164,11 +166,12 @@ export default function PerfilesPanel({ accessToken }: Props) {
         setPopup({
           visible: true,
           type: "success",
-          message: "El lider de cuadrilla se creo con exito.",
+          message: "El usuario se creo con exito.",
         });
         setEmail("");
         setPassword("");
         setNombreCompleto("");
+        setRole("lider_cuadrilla");
         cargarUsuarios();
       } else if (res.status === 409) {
         setPopup({
@@ -198,7 +201,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
-        <h2 className="text-lg font-semibold text-slate-800 mb-6">Nuevo lider de cuadrilla</h2>
+        <h2 className="text-lg font-semibold text-slate-800 mb-6">Nuevo usuario</h2>
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
           <div>
@@ -226,9 +229,24 @@ export default function PerfilesPanel({ accessToken }: Props) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="lider@ejemplo.com"
+              placeholder="usuario@ejemplo.com"
             />
             {errores.email && <p className="text-sm text-red-600 mt-1">{errores.email}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="role" className="block text-sm font-medium text-slate-700 mb-1">
+              Perfil
+            </label>
+            <select
+              id="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as "administrador" | "lider_cuadrilla")}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="lider_cuadrilla">Lider de cuadrilla</option>
+              <option value="administrador">Coordinador</option>
+            </select>
           </div>
 
           <div className="sm:col-span-2">
@@ -245,7 +263,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
             />
             {errores.password && <p className="text-sm text-red-600 mt-1">{errores.password}</p>}
             <p className="text-xs text-slate-500 mt-1">
-              Comunicasela al lider de cuadrilla por otro medio; el sistema no la envia por correo.
+              Comunicasela al usuario por otro medio; el sistema no la envia por correo.
             </p>
           </div>
 
@@ -255,7 +273,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
               disabled={guardando}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium px-4 py-2 rounded-md transition-colors"
             >
-              {guardando ? "Creando..." : "Crear lider de cuadrilla"}
+              {guardando ? "Creando..." : "Crear usuario"}
             </button>
           </div>
         </form>
@@ -341,7 +359,7 @@ export default function PerfilesPanel({ accessToken }: Props) {
                             className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             <option value="lider_cuadrilla">Lider de cuadrilla</option>
-                            <option value="administrador">Administrador</option>
+                            <option value="administrador">Coordinador</option>
                           </select>
                         ) : (
                           <span
