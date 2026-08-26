@@ -101,7 +101,8 @@ create table if not exists public.trabajos (
   id_smp text not null check (length(trim(id_smp)) > 0),
   site text not null unique check (length(trim(site)) > 0),
   zona text not null check (length(trim(zona)) > 0),
-  lider_id uuid references public.profiles (id) on delete cascade,
+  lider_id uuid references public.profiles (id) on 
+  delete cascade,
   asignado_por uuid references public.profiles (id) on delete set null,
   estado text not null default 'asignado',
   created_at timestamptz not null default now(),
@@ -198,7 +199,12 @@ create table if not exists public.trabajos_historial_estado (
 
 comment on table public.trabajos_historial_estado is 'Historial de cambios de trabajos.estado, para saber el estado vigente en una fecha pasada.';
 
-create index if not exists idx_historial_estado_trabajo_id on public.trabajos_historial_estado (trabajo_id);
+-- Compuesto (trabajo_id, created_at): Daily/Programacion siempre filtran
+-- por trabajo_id + "created_at < fecha" a la vez; tambien sirve para
+-- consultas que solo filtran por trabajo_id (columna izquierda), asi que
+-- reemplaza al indice simple anterior en vez de sumarse a el.
+drop index if exists idx_historial_estado_trabajo_id;
+create index if not exists idx_historial_estado_trabajo_created on public.trabajos_historial_estado (trabajo_id, created_at);
 
 alter table public.trabajos_historial_estado enable row level security;
 
@@ -254,7 +260,12 @@ create table if not exists public.avances_diarios_detalle (
 comment on table public.avances_diarios is 'Un registro por cada guardado diario de avance de un lider_cuadrilla.';
 comment on table public.avances_diarios_detalle is 'Cantidad avanzada ese dia por actividad, ligada a un avance_diario.';
 
-create index if not exists idx_avances_diarios_trabajo_id on public.avances_diarios (trabajo_id);
+-- Compuesto (trabajo_id, created_at): reemplaza al indice simple porque
+-- Daily/Programacion siempre filtran avances_diarios por trabajo_id +
+-- rango de fecha juntos, y esta version tambien cubre consultas que solo
+-- filtran por trabajo_id.
+drop index if exists idx_avances_diarios_trabajo_id;
+create index if not exists idx_avances_diarios_trabajo_created on public.avances_diarios (trabajo_id, created_at);
 create index if not exists idx_avances_detalle_avance_id on public.avances_diarios_detalle (avance_diario_id);
 create index if not exists idx_avances_detalle_actividad_id on public.avances_diarios_detalle (actividad_id);
 

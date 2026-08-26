@@ -1390,7 +1390,16 @@ def obtener_vista_trabajos_por_fecha(
     como por Programacion): por cada trabajo activo, quien esta
     programado ese dia (tabla programacion), si ya actualizo el avance,
     cuanto reporto, que comentario dejo y el % de avance acumulado a esa
-    fecha."""
+    fecha.
+
+    Para minimizar los round-trips a Supabase (cada uno pesa varios
+    cientos de ms en un backend serverless), esta funcion agrupa lo que
+    antes eran 9 consultas secuenciales en 5: las actividades viajan
+    incrustadas en la consulta de trabajos, el perfil del lider
+    incrustado en la de programacion, y los avances/detalle "del dia" y
+    "acumulados hasta la fecha" se piden una sola vez cada uno (el
+    acumulado es un superconjunto del dia, asi que separarlos en dos
+    consultas era trabajo duplicado)."""
     # El "dia" se define en hora de Colombia (00:00 a 23:59:59 -05:00), no
     # en UTC: un avance guardado en la noche en Colombia ya es "manana" en
     # UTC y quedaria mal clasificado si se comparara en UTC directo.
@@ -1398,7 +1407,10 @@ def obtener_vista_trabajos_por_fecha(
     fin = inicio + timedelta(days=1)
 
     try:
-        query = supabase.table("trabajos").select("id, id_smp, site, zona, estado, created_at")
+        query = supabase.table("trabajos").select(
+            "id, id_smp, site, zona, estado, created_at, "
+            "actividades(id, actividad, hw_actividad, qty)"
+        )
         if trabajo_ids_filtro:
             query = query.in_("id", trabajo_ids_filtro)
         trabajos_resp = query.order("site").execute()
@@ -1478,10 +1490,14 @@ def obtener_vista_trabajos_por_fecha(
     # Quien esta programado (tabla programacion) para cada trabajo en
     # esta fecha especifica -- es la fuente de verdad del lider del dia,
     # no trabajos.lider_id (que ya no se llena desde la pestana Trabajos).
+    # El perfil del lider viaja incrustado en la misma consulta (embed de
+    # PostgREST) en vez de una consulta aparte a profiles; se especifica
+    # "profiles!lider_id" porque programacion tambien tiene un FK a
+    # profiles via asignado_por y un embed sin calificar es ambiguo.
     try:
         programacion_resp = (
             supabase.table("programacion")
-            .select("trabajo_id, lider_id")
+            .select("trabajo_id, lider_id, lider:profiles!lider_id(nombre_completo, email, activo)")
             .in_("trabajo_id", activo_ids)
             .eq("fecha", fecha_obj.isoformat())
             .execute()
@@ -1492,26 +1508,13 @@ def obtener_vista_trabajos_por_fecha(
             detail="Error interno al obtener la programacion de esa fecha.",
         ) from exc
 
-    lider_id_por_trabajo: dict[str, str] = {
-        p["trabajo_id"]: p["lider_id"] for p in programacion_resp.data or []
-    }
-
-    lider_ids = list({lid for lid in lider_id_por_trabajo.values()})
+    lider_id_por_trabajo: dict[str, str] = {}
     perfiles_lideres: dict[str, dict] = {}
-    if lider_ids:
-        try:
-            perfiles_resp = (
-                supabase.table("profiles")
-                .select("id, nombre_completo, email, activo")
-                .in_("id", lider_ids)
-                .execute()
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error interno al obtener los lideres programados.",
-            ) from exc
-        perfiles_lideres = {p["id"]: p for p in perfiles_resp.data or []}
+    for fila_programacion in programacion_resp.data or []:
+        lider_id_por_trabajo[fila_programacion["trabajo_id"]] = fila_programacion["lider_id"]
+        perfil_lider = fila_programacion.get("lider")
+        if perfil_lider:
+            perfiles_lideres[fila_programacion["lider_id"]] = perfil_lider
 
     # "El lider esta actualmente deshabilitado" es un estado del
     # PRESENTE: no debe borrar el historial de un dia pasado en el que
@@ -1535,12 +1538,19 @@ def obtener_vista_trabajos_por_fecha(
 
     trabajo_ids = [t["id"] for t in trabajos]
 
+    # Avances hasta el final del dia consultado, en una sola consulta: el
+    # "avance del dia" es el subconjunto con created_at >= inicio, y el
+    # total (incluyendo dias anteriores) es el que se usa para calcular
+    # el % de avance acumulado. Antes esto eran 2 consultas a
+    # avances_diarios (una acotada al dia, otra "< fin" para el
+    # acumulado) y 2 a avances_diarios_detalle; como la segunda siempre
+    # incluye a la primera, se piden ambas de una sola vez y se separan
+    # en memoria.
     try:
         avances_resp = (
             supabase.table("avances_diarios")
-            .select("id, trabajo_id, comentario")
+            .select("id, trabajo_id, comentario, created_at")
             .in_("trabajo_id", trabajo_ids)
-            .gte("created_at", inicio.isoformat())
             .lt("created_at", fin.isoformat())
             .execute()
         )
@@ -1550,16 +1560,21 @@ def obtener_vista_trabajos_por_fecha(
             detail="Error interno al obtener los avances del dia.",
         ) from exc
 
-    avances_del_dia = avances_resp.data or []
-    avance_ids = [a["id"] for a in avances_del_dia]
+    avances_hasta_fecha = avances_resp.data or []
+    avances_del_dia = [
+        a for a in avances_hasta_fecha if _parsear_timestamptz(a["created_at"]) >= inicio
+    ]
+    avance_ids_del_dia = {a["id"] for a in avances_del_dia}
+    avance_ids_hasta_fecha = [a["id"] for a in avances_hasta_fecha]
 
     detalles_por_avance: dict[str, list[dict]] = {}
-    if avance_ids:
+    acumulado_por_actividad: dict[str, int] = {}
+    if avance_ids_hasta_fecha:
         try:
             detalles_resp = (
                 supabase.table("avances_diarios_detalle")
                 .select("avance_diario_id, actividad_id, cantidad")
-                .in_("avance_diario_id", avance_ids)
+                .in_("avance_diario_id", avance_ids_hasta_fecha)
                 .execute()
             )
         except Exception as exc:
@@ -1568,56 +1583,22 @@ def obtener_vista_trabajos_por_fecha(
                 detail="Error interno al obtener el detalle de los avances.",
             ) from exc
         for fila in detalles_resp.data or []:
-            detalles_por_avance.setdefault(fila["avance_diario_id"], []).append(fila)
-
-    try:
-        actividades_resp = (
-            supabase.table("actividades")
-            .select("id, trabajo_id, actividad, hw_actividad, qty")
-            .in_("trabajo_id", trabajo_ids)
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener las actividades.",
-        ) from exc
-
-    actividades = actividades_resp.data or []
-    actividades_por_id = {a["id"]: a for a in actividades}
-    actividades_por_trabajo: dict[str, list[dict]] = {}
-    for actividad in actividades:
-        actividades_por_trabajo.setdefault(actividad["trabajo_id"], []).append(actividad)
-
-    # Acumulado global (todo el historial hasta el final del dia
-    # consultado) por actividad, para calcular el % de avance de cada
-    # trabajo -- no solo lo reportado ese dia especifico.
-    acumulado_por_actividad: dict[str, int] = {}
-    try:
-        avances_hasta_fecha_resp = (
-            supabase.table("avances_diarios")
-            .select("id")
-            .in_("trabajo_id", trabajo_ids)
-            .lt("created_at", fin.isoformat())
-            .execute()
-        )
-        ids_hasta_fecha = [a["id"] for a in avances_hasta_fecha_resp.data or []]
-        if ids_hasta_fecha:
-            detalles_hasta_fecha_resp = (
-                supabase.table("avances_diarios_detalle")
-                .select("actividad_id, cantidad")
-                .in_("avance_diario_id", ids_hasta_fecha)
-                .execute()
+            acumulado_por_actividad[fila["actividad_id"]] = (
+                acumulado_por_actividad.get(fila["actividad_id"], 0) + fila["cantidad"]
             )
-            for fila in detalles_hasta_fecha_resp.data or []:
-                acumulado_por_actividad[fila["actividad_id"]] = (
-                    acumulado_por_actividad.get(fila["actividad_id"], 0) + fila["cantidad"]
-                )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al calcular el avance acumulado.",
-        ) from exc
+            if fila["avance_diario_id"] in avance_ids_del_dia:
+                detalles_por_avance.setdefault(fila["avance_diario_id"], []).append(fila)
+
+    # Las actividades viajan incrustadas en la consulta de trabajos de
+    # mas arriba (embed de PostgREST), asi que no hace falta una consulta
+    # aparte a la tabla actividades.
+    actividades_por_id: dict[str, dict] = {}
+    actividades_por_trabajo: dict[str, list[dict]] = {}
+    for trabajo in trabajos:
+        actividades_trabajo = trabajo.get("actividades") or []
+        actividades_por_trabajo[trabajo["id"]] = actividades_trabajo
+        for actividad in actividades_trabajo:
+            actividades_por_id[actividad["id"]] = actividad
 
     avances_por_trabajo: dict[str, list[dict]] = {}
     for avance in avances_del_dia:
