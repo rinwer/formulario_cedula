@@ -1706,3 +1706,31 @@ def asignar_programacion(
             detail="No se encontro el trabajo (o ya no esta en estado Asignado).",
         )
     return filas[0]
+
+
+@app.delete("/api/admin/programacion/{trabajo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def quitar_programacion(
+    trabajo_id: str,
+    fecha: str = Query(..., description="YYYY-MM-DD"),
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> None:
+    """Quita la asignacion de lider de un trabajo para una fecha dada
+    (el site vuelve a quedar 'sin asignar' ese dia). Usado por la vista de
+    Programacion agrupada por lider, para mover o quitar un site."""
+    try:
+        date.fromisoformat(fecha)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+    try:
+        supabase.table("programacion").delete().eq("trabajo_id", trabajo_id).eq(
+            "fecha", fecha
+        ).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al quitar la asignacion.",
+        ) from exc

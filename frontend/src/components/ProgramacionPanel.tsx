@@ -14,6 +14,63 @@ function mananaIso(): string {
   return `${anio}-${mes}-${dia}`;
 }
 
+type FilaProgramacionProps = {
+  fila: AvanceDiarioAdmin;
+  ocupado: boolean;
+  onQuitar: (trabajoId: string) => void;
+};
+
+function FilaProgramacion({ fila, ocupado, onQuitar }: FilaProgramacionProps) {
+  return (
+    <tr className="border-b border-slate-100 last:border-0 align-top">
+      <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
+      <td className="py-2 pr-4 text-slate-700">{fila.zona}</td>
+      <td className="py-2 pr-4">
+        <span
+          className={
+            "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+            (fila.actualizado ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")
+          }
+        >
+          {fila.actualizado ? "Actualizado" : "Sin actualizar"}
+        </span>
+      </td>
+      <td className="py-2 pr-4">
+        {fila.porcentaje_avance === null ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <span
+            className={
+              "text-xs font-semibold " +
+              (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
+            }
+          >
+            {fila.porcentaje_avance}%
+          </span>
+        )}
+      </td>
+      <td className="py-2 pr-4 text-xs text-slate-600">
+        {fila.detalle.length === 0
+          ? "—"
+          : fila.detalle.map((d) => `${d.hw_actividad ?? d.actividad ?? "—"}: ${d.cantidad}`).join(" · ")}
+      </td>
+      <td className="py-2 pr-4 text-slate-700">
+        {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
+      </td>
+      <td className="py-2 pr-4 text-right">
+        <button
+          type="button"
+          onClick={() => onQuitar(fila.trabajo_id)}
+          disabled={ocupado}
+          className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium"
+        >
+          {ocupado ? "..." : "Quitar"}
+        </button>
+      </td>
+    </tr>
+  );
+}
+
 export default function ProgramacionPanel() {
   const [fecha, setFecha] = useState(mananaIso());
   const [filas, setFilas] = useState<AvanceDiarioAdmin[]>([]);
@@ -21,7 +78,7 @@ export default function ProgramacionPanel() {
   const [error, setError] = useState<string | null>(null);
 
   const [lideres, setLideres] = useState<Usuario[]>([]);
-  const [guardandoTrabajoId, setGuardandoTrabajoId] = useState<string | null>(null);
+  const [trabajoOcupadoId, setTrabajoOcupadoId] = useState<string | null>(null);
   const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
 
   const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
@@ -33,8 +90,8 @@ export default function ProgramacionPanel() {
       const data: Usuario[] = await res.json();
       setLideres(data);
     } catch {
-      // Si falla, el selector de lider queda vacio; el resto del panel
-      // sigue funcionando.
+      // Si falla, no aparecen tarjetas de lider; el resto del panel sigue
+      // funcionando.
     }
   };
 
@@ -69,7 +126,7 @@ export default function ProgramacionPanel() {
   const asignarLider = async (trabajoId: string, liderId: string) => {
     if (!liderId) return;
     setErrorAsignacion(null);
-    setGuardandoTrabajoId(trabajoId);
+    setTrabajoOcupadoId(trabajoId);
     try {
       const res = await fetchAutenticado(`${API_URL}/api/admin/programacion`, {
         method: "PUT",
@@ -87,7 +144,36 @@ export default function ProgramacionPanel() {
     } catch {
       setErrorAsignacion("No se pudo conectar con el servidor. Intenta de nuevo.");
     } finally {
-      setGuardandoTrabajoId(null);
+      setTrabajoOcupadoId(null);
+    }
+  };
+
+  const quitarAsignacion = async (trabajoId: string) => {
+    setErrorAsignacion(null);
+    setTrabajoOcupadoId(trabajoId);
+    try {
+      const parametros = new URLSearchParams({ fecha });
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/programacion/${trabajoId}?${parametros.toString()}`,
+        { method: "DELETE" }
+      );
+
+      if (res.status === 204) {
+        setFilas((prev) =>
+          prev.map((f) =>
+            f.trabajo_id === trabajoId
+              ? { ...f, lider_id: null, lider_nombre: null, lider_email: null }
+              : f
+          )
+        );
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorAsignacion(data?.detail ?? "Ocurrio un error al quitar la asignacion.");
+      }
+    } catch {
+      setErrorAsignacion("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setTrabajoOcupadoId(null);
     }
   };
 
@@ -97,6 +183,28 @@ export default function ProgramacionPanel() {
     month: "long",
     year: "numeric",
   });
+
+  // Agrupa los sites activos de esta fecha por el lider que tienen
+  // asignado (segun la tabla programacion), para que el coordinador
+  // trabaje "por lider" en vez de "por site": elige un lider y le agrega
+  // o quita sites, en vez de ir fila por fila entre todos los sites.
+  const filasPorLider: Record<string, AvanceDiarioAdmin[]> = {};
+  const sinAsignar: AvanceDiarioAdmin[] = [];
+  filas.forEach((fila) => {
+    if (fila.lider_id) {
+      (filasPorLider[fila.lider_id] ??= []).push(fila);
+    } else {
+      sinAsignar.push(fila);
+    }
+  });
+
+  // Un lider deshabilitado (o ya no en la lista de usuarios) puede seguir
+  // teniendo sites asignados de una programacion anterior: se muestran
+  // aparte, en modo solo lectura + boton "Quitar", en vez de esconderlos.
+  const idsHabilitados = new Set(lideresHabilitados.map((l) => l.id));
+  const liderIdsNoHabilitadosConSites = Object.keys(filasPorLider).filter(
+    (id) => !idsHabilitados.has(id)
+  );
 
   return (
     <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
@@ -128,88 +236,114 @@ export default function ProgramacionPanel() {
             <p className="text-sm text-slate-500">No hay trabajos activos para programar.</p>
           )}
 
-          {filas.length > 0 && (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Site</th>
-                  <th className="py-2 pr-4 font-medium">Zona</th>
-                  <th className="py-2 pr-4 font-medium">Lider de cuadrilla</th>
-                  <th className="py-2 pr-4 font-medium">Actualizo</th>
-                  <th className="py-2 pr-4 font-medium">% Avance</th>
-                  <th className="py-2 pr-4 font-medium">Avance del dia</th>
-                  <th className="py-2 pr-4 font-medium">Comentario</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((fila) => (
-                  <tr
-                    key={fila.trabajo_id}
-                    className="border-b border-slate-100 last:border-0 align-top"
-                  >
-                    <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
-                    <td className="py-2 pr-4 text-slate-700">{fila.zona}</td>
-                    <td className="py-2 pr-4">
-                      <select
-                        value={fila.lider_id ?? ""}
-                        onChange={(e) => asignarLider(fila.trabajo_id, e.target.value)}
-                        disabled={guardandoTrabajoId === fila.trabajo_id}
-                        className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Sin asignar</option>
-                        {fila.lider_id &&
-                          !lideresHabilitados.some((l) => l.id === fila.lider_id) && (
-                            <option value={fila.lider_id}>
-                              {fila.lider_nombre ?? fila.lider_email} (deshabilitado)
-                            </option>
-                          )}
-                        {lideresHabilitados.map((lider) => (
-                          <option key={lider.id} value={lider.id}>
-                            {lider.nombre_completo}
-                          </option>
+          {!cargando && !error && filas.length > 0 && lideresHabilitados.length === 0 && (
+            <p className="text-sm text-slate-500">No hay lideres de cuadrilla habilitados.</p>
+          )}
+
+          <div className="space-y-5">
+            {lideresHabilitados.map((lider) => {
+              const sitesDelLider = filasPorLider[lider.id] ?? [];
+              const sitesParaAgregar = filas.filter((f) => f.lider_id !== lider.id);
+
+              return (
+                <div key={lider.id} className="border border-slate-200 rounded-lg p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h3 className="font-semibold text-slate-800">{lider.nombre_completo}</h3>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) asignarLider(e.target.value, lider.id);
+                      }}
+                      disabled={trabajoOcupadoId !== null || sitesParaAgregar.length === 0}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">+ Agregar site...</option>
+                      {sitesParaAgregar.map((f) => (
+                        <option key={f.trabajo_id} value={f.trabajo_id}>
+                          {f.site}
+                          {f.lider_id ? ` (asignado a ${f.lider_nombre ?? f.lider_email ?? "otro"})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {sitesDelLider.length === 0 ? (
+                    <p className="text-sm text-slate-400">Sin sites asignados para este dia.</p>
+                  ) : (
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500">
+                          <th className="py-2 pr-4 font-medium">Site</th>
+                          <th className="py-2 pr-4 font-medium">Zona</th>
+                          <th className="py-2 pr-4 font-medium">Actualizo</th>
+                          <th className="py-2 pr-4 font-medium">% Avance</th>
+                          <th className="py-2 pr-4 font-medium">Avance del dia</th>
+                          <th className="py-2 pr-4 font-medium">Comentario</th>
+                          <th className="py-2 pr-4 font-medium text-right">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sitesDelLider.map((fila) => (
+                          <FilaProgramacion
+                            key={fila.trabajo_id}
+                            fila={fila}
+                            ocupado={trabajoOcupadoId === fila.trabajo_id}
+                            onQuitar={quitarAsignacion}
+                          />
                         ))}
-                      </select>
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span
-                        className={
-                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
-                          (fila.actualizado
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-amber-100 text-amber-700")
-                        }
-                      >
-                        {fila.actualizado ? "Actualizado" : "Sin actualizar"}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4">
-                      {fila.porcentaje_avance === null ? (
-                        <span className="text-slate-400">—</span>
-                      ) : (
-                        <span
-                          className={
-                            "text-xs font-semibold " +
-                            (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
-                          }
-                        >
-                          {fila.porcentaje_avance}%
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-4 text-xs text-slate-600">
-                      {fila.detalle.length === 0
-                        ? "—"
-                        : fila.detalle
-                            .map((d) => `${d.hw_actividad ?? d.actividad ?? "—"}: ${d.cantidad}`)
-                            .join(" · ")}
-                    </td>
-                    <td className="py-2 pr-4 text-slate-700">
-                      {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
-                    </td>
-                  </tr>
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+
+            {liderIdsNoHabilitadosConSites.map((liderId) => {
+              const sitesDelLider = filasPorLider[liderId];
+              const nombre =
+                sitesDelLider[0]?.lider_nombre ?? sitesDelLider[0]?.lider_email ?? "Lider";
+              return (
+                <div key={liderId} className="border border-amber-200 bg-amber-50/40 rounded-lg p-4">
+                  <h3 className="font-semibold text-slate-800 mb-3">{nombre} (deshabilitado)</h3>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500">
+                        <th className="py-2 pr-4 font-medium">Site</th>
+                        <th className="py-2 pr-4 font-medium">Zona</th>
+                        <th className="py-2 pr-4 font-medium">Actualizo</th>
+                        <th className="py-2 pr-4 font-medium">% Avance</th>
+                        <th className="py-2 pr-4 font-medium">Avance del dia</th>
+                        <th className="py-2 pr-4 font-medium">Comentario</th>
+                        <th className="py-2 pr-4 font-medium text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sitesDelLider.map((fila) => (
+                        <FilaProgramacion
+                          key={fila.trabajo_id}
+                          fila={fila}
+                          ocupado={trabajoOcupadoId === fila.trabajo_id}
+                          onQuitar={quitarAsignacion}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
+
+          {sinAsignar.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-700 mb-2">Sites sin asignar</h3>
+              <ul className="text-sm text-slate-600 space-y-1">
+                {sinAsignar.map((f) => (
+                  <li key={f.trabajo_id}>
+                    {f.site} <span className="text-slate-400">— {f.zona}</span>
+                  </li>
                 ))}
-              </tbody>
-            </table>
+              </ul>
+            </div>
           )}
         </div>
       </div>
