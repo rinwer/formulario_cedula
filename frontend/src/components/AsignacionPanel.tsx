@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { EstadoTrabajo, Trabajo } from "../types";
+import { ActividadAdmin, EstadoTrabajo, Trabajo } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -107,6 +107,29 @@ export default function AsignacionPanel({ accessToken }: Props) {
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const [subiendoCsv, setSubiendoCsv] = useState(false);
+
+  const [trabajoActividades, setTrabajoActividades] = useState<Trabajo | null>(null);
+  const [actividades, setActividades] = useState<ActividadAdmin[]>([]);
+  const [cargandoActividades, setCargandoActividades] = useState(false);
+  const [errorActividades, setErrorActividades] = useState<string | null>(null);
+
+  const [nuevaActividad, setNuevaActividad] = useState("");
+  const [nuevaTipificacion, setNuevaTipificacion] = useState("");
+  const [nuevaHw, setNuevaHw] = useState("");
+  const [nuevoQty, setNuevoQty] = useState("");
+  const [nuevoAvance, setNuevoAvance] = useState("");
+  const [creandoActividad, setCreandoActividad] = useState(false);
+
+  const [actividadEditandoId, setActividadEditandoId] = useState<string | null>(null);
+  const [actividadEditada, setActividadEditada] = useState({
+    actividad: "",
+    tipificacion: "",
+    hw_actividad: "",
+    qty: "",
+    avance: "",
+  });
+  const [guardandoActividad, setGuardandoActividad] = useState(false);
+  const [eliminandoActividadId, setEliminandoActividadId] = useState<string | null>(null);
 
   const cerrarPopup = () => setPopup(initialPopup);
 
@@ -293,6 +316,162 @@ export default function AsignacionPanel({ accessToken }: Props) {
   };
 
   const dispararSelectorArchivo = () => inputArchivoRef.current?.click();
+
+  const cargarActividades = async (trabajoId: string) => {
+    setCargandoActividades(true);
+    setErrorActividades(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/trabajos/${trabajoId}/actividades`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error();
+      const data: ActividadAdmin[] = await res.json();
+      setActividades(data);
+    } catch {
+      setErrorActividades("No se pudieron cargar las actividades.");
+    } finally {
+      setCargandoActividades(false);
+    }
+  };
+
+  const abrirActividades = (trabajo: Trabajo) => {
+    setTrabajoActividades(trabajo);
+    setActividadEditandoId(null);
+    setNuevaActividad("");
+    setNuevaTipificacion("");
+    setNuevaHw("");
+    setNuevoQty("");
+    setNuevoAvance("");
+    cargarActividades(trabajo.id);
+  };
+
+  const cerrarActividades = () => {
+    setTrabajoActividades(null);
+    setActividades([]);
+    setErrorActividades(null);
+    setActividadEditandoId(null);
+  };
+
+  const crearActividad = async () => {
+    if (!trabajoActividades || !nuevaActividad.trim()) return;
+    setCreandoActividad(true);
+    setErrorActividades(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            actividad: nuevaActividad.trim(),
+            tipificacion: nuevaTipificacion.trim() || null,
+            hw_actividad: nuevaHw.trim() || null,
+            qty: nuevoQty.trim() || null,
+            avance: nuevoAvance.trim() || null,
+          }),
+        }
+      );
+      if (res.status === 201) {
+        const creada: ActividadAdmin = await res.json();
+        setActividades((prev) => [...prev, creada]);
+        setNuevaActividad("");
+        setNuevaTipificacion("");
+        setNuevaHw("");
+        setNuevoQty("");
+        setNuevoAvance("");
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorActividades(data?.detail ?? "Ocurrio un error al crear la actividad.");
+      }
+    } catch {
+      setErrorActividades("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setCreandoActividad(false);
+    }
+  };
+
+  const iniciarEdicionActividad = (act: ActividadAdmin) => {
+    setActividadEditandoId(act.id);
+    setActividadEditada({
+      actividad: act.actividad ?? "",
+      tipificacion: act.tipificacion ?? "",
+      hw_actividad: act.hw_actividad ?? "",
+      qty: act.qty ?? "",
+      avance: act.avance ?? "",
+    });
+    setErrorActividades(null);
+  };
+
+  const cancelarEdicionActividad = () => {
+    setActividadEditandoId(null);
+    setErrorActividades(null);
+  };
+
+  const guardarEdicionActividad = async (actividadId: string) => {
+    if (!trabajoActividades || !actividadEditada.actividad.trim()) return;
+    setGuardandoActividad(true);
+    setErrorActividades(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades/${actividadId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            actividad: actividadEditada.actividad.trim(),
+            tipificacion: actividadEditada.tipificacion.trim() || null,
+            hw_actividad: actividadEditada.hw_actividad.trim() || null,
+            qty: actividadEditada.qty.trim() || null,
+            avance: actividadEditada.avance.trim() || null,
+          }),
+        }
+      );
+      if (res.ok) {
+        const actualizada: ActividadAdmin = await res.json();
+        setActividades((prev) => prev.map((a) => (a.id === actualizada.id ? actualizada : a)));
+        setActividadEditandoId(null);
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorActividades(data?.detail ?? "Ocurrio un error al actualizar la actividad.");
+      }
+    } catch {
+      setErrorActividades("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setGuardandoActividad(false);
+    }
+  };
+
+  const eliminarActividad = async (actividadId: string) => {
+    if (!trabajoActividades) return;
+    if (!window.confirm("¿Eliminar esta actividad?")) return;
+    setEliminandoActividadId(actividadId);
+    setErrorActividades(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades/${actividadId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+      if (res.status === 204) {
+        setActividades((prev) => prev.filter((a) => a.id !== actividadId));
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorActividades(data?.detail ?? "Ocurrio un error al eliminar la actividad.");
+      }
+    } catch {
+      setErrorActividades("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setEliminandoActividadId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -538,6 +717,12 @@ export default function AsignacionPanel({ accessToken }: Props) {
                               Editar
                             </button>
                             <button
+                              onClick={() => abrirActividades(trabajo)}
+                              className="text-sm text-slate-600 hover:text-slate-800 font-medium px-3 py-1"
+                            >
+                              Actividades
+                            </button>
+                            <button
                               onClick={dispararSelectorArchivo}
                               disabled={subiendoCsv}
                               className="text-sm text-slate-600 hover:text-slate-800 disabled:text-slate-400 font-medium px-3 py-1"
@@ -555,6 +740,234 @@ export default function AsignacionPanel({ accessToken }: Props) {
           </div>
         )}
       </div>
+
+      {trabajoActividades && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-20">
+          <div className="bg-white rounded-lg shadow-lg max-w-3xl w-full p-5 sm:p-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-semibold text-slate-800">
+                Actividades de {trabajoActividades.site}
+              </h3>
+              <button
+                onClick={cerrarActividades}
+                aria-label="Cerrar"
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Las actividades con avance reportado no se pueden eliminar, para no perder el
+              historial del lider de cuadrilla.
+            </p>
+
+            {errorActividades && (
+              <p className="text-sm text-red-600 mb-3">{errorActividades}</p>
+            )}
+
+            {cargandoActividades ? (
+              <p className="text-sm text-slate-500">Cargando...</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm mb-4">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th className="py-2 pr-3 font-medium">Actividad</th>
+                      <th className="py-2 pr-3 font-medium">Tipificacion</th>
+                      <th className="py-2 pr-3 font-medium">HW-Actividad</th>
+                      <th className="py-2 pr-3 font-medium">Qty</th>
+                      <th className="py-2 pr-3 font-medium">Avance</th>
+                      <th className="py-2 pr-3 font-medium text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {actividades.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-3 text-slate-500">
+                          Este trabajo todavia no tiene actividades.
+                        </td>
+                      </tr>
+                    )}
+                    {actividades.map((act) => {
+                      const editando = actividadEditandoId === act.id;
+                      return (
+                        <tr key={act.id} className="border-b border-slate-100 last:border-0 align-top">
+                          <td className="py-2 pr-3">
+                            {editando ? (
+                              <input
+                                type="text"
+                                value={actividadEditada.actividad}
+                                onChange={(e) =>
+                                  setActividadEditada((prev) => ({ ...prev, actividad: e.target.value }))
+                                }
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                autoFocus
+                              />
+                            ) : (
+                              act.actividad ?? "—"
+                            )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {editando ? (
+                              <input
+                                type="text"
+                                value={actividadEditada.tipificacion}
+                                onChange={(e) =>
+                                  setActividadEditada((prev) => ({
+                                    ...prev,
+                                    tipificacion: e.target.value,
+                                  }))
+                                }
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            ) : (
+                              act.tipificacion ?? "—"
+                            )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {editando ? (
+                              <input
+                                type="text"
+                                value={actividadEditada.hw_actividad}
+                                onChange={(e) =>
+                                  setActividadEditada((prev) => ({
+                                    ...prev,
+                                    hw_actividad: e.target.value,
+                                  }))
+                                }
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            ) : (
+                              act.hw_actividad ?? "—"
+                            )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {editando ? (
+                              <input
+                                type="text"
+                                value={actividadEditada.qty}
+                                onChange={(e) =>
+                                  setActividadEditada((prev) => ({ ...prev, qty: e.target.value }))
+                                }
+                                className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            ) : (
+                              act.qty ?? "—"
+                            )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {editando ? (
+                              <input
+                                type="text"
+                                value={actividadEditada.avance}
+                                onChange={(e) =>
+                                  setActividadEditada((prev) => ({ ...prev, avance: e.target.value }))
+                                }
+                                className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            ) : (
+                              act.avance ?? "—"
+                            )}
+                          </td>
+                          <td className="py-2 pr-3 text-right whitespace-nowrap">
+                            {editando ? (
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => guardarEdicionActividad(act.id)}
+                                  disabled={guardandoActividad || !actividadEditada.actividad.trim()}
+                                  className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 px-3 py-1 rounded-md"
+                                >
+                                  {guardandoActividad ? "Guardando..." : "Guardar"}
+                                </button>
+                                <button
+                                  onClick={cancelarEdicionActividad}
+                                  disabled={guardandoActividad}
+                                  className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => iniciarEdicionActividad(act)}
+                                  className="text-sm text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => eliminarActividad(act.id)}
+                                  disabled={act.tiene_avance || eliminandoActividadId === act.id}
+                                  title={
+                                    act.tiene_avance
+                                      ? "Ya tiene avance reportado, no se puede eliminar"
+                                      : undefined
+                                  }
+                                  className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium px-2 py-1"
+                                >
+                                  {eliminandoActividadId === act.id ? "..." : "Eliminar"}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-slate-200">
+              <h4 className="text-sm font-semibold text-slate-800 mb-3">Agregar actividad</h4>
+              <div className="grid gap-2 sm:grid-cols-5">
+                <input
+                  type="text"
+                  value={nuevaActividad}
+                  onChange={(e) => setNuevaActividad(e.target.value)}
+                  placeholder="Actividad"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={nuevaTipificacion}
+                  onChange={(e) => setNuevaTipificacion(e.target.value)}
+                  placeholder="Tipificacion"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={nuevaHw}
+                  onChange={(e) => setNuevaHw(e.target.value)}
+                  placeholder="HW-Actividad"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={nuevoQty}
+                  onChange={(e) => setNuevoQty(e.target.value)}
+                  placeholder="Qty"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={nuevoAvance}
+                  onChange={(e) => setNuevoAvance(e.target.value)}
+                  placeholder="Avance"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                onClick={crearActividad}
+                disabled={creandoActividad || !nuevaActividad.trim()}
+                className="mt-3 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 font-medium px-4 py-2 rounded-md transition-colors"
+              >
+                {creandoActividad ? "Agregando..." : "Agregar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {popup.visible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4">

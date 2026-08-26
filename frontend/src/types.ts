@@ -37,6 +37,10 @@ export type Actividad = {
   avance: string | null;
 };
 
+export type ActividadAdmin = Actividad & {
+  tiene_avance: boolean;
+};
+
 export type TrabajoConActividades = Trabajo & {
   actividades: Actividad[];
 };

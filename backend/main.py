@@ -256,6 +256,27 @@ class TrabajoConActividadesOut(TrabajoOut):
     actividades: list[ActividadOut] = []
 
 
+class ActividadCreate(BaseModel):
+    actividad: str = Field(..., min_length=1)
+    tipificacion: str | None = None
+    hw_actividad: str | None = None
+    qty: str | None = None
+    avance: str | None = None
+
+    @field_validator("actividad")
+    @classmethod
+    def actividad_no_vacia(cls, value: str) -> str:
+        return _campo_no_vacio(value, "La actividad")
+
+
+class ActividadUpdate(ActividadCreate):
+    pass
+
+
+class ActividadAdminOut(ActividadOut):
+    tiene_avance: bool = False
+
+
 class ImportarActividadesResultado(BaseModel):
     actividades_cargadas: int
     sitios_no_encontrados: list[str]
@@ -751,6 +772,16 @@ def _detectar_delimitador_csv(texto: str) -> str | None:
     return None
 
 
+def _clave_actividad(actividad: str | None, tipificacion: str | None, hw_actividad: str | None) -> tuple:
+    """Clave natural para emparejar una fila del CSV con una actividad ya
+    existente en la base de datos, sin depender del orden de las filas."""
+    return (
+        (actividad or "").strip().lower(),
+        (tipificacion or "").strip().lower(),
+        (hw_actividad or "").strip().lower(),
+    )
+
+
 @app.post("/api/admin/actividades/importar", response_model=ImportarActividadesResultado)
 def importar_actividades(
     archivo: UploadFile = File(...),
@@ -758,9 +789,12 @@ def importar_actividades(
 ) -> dict:
     """Importa un CSV con columnas SITE, ACTIVIDAD, TIPIFICACION,
     HW-ACTIVIDAD, QTY, AVANCE. Cada fila se liga al trabajo cuyo site
-    coincida (sin distinguir mayusculas ni espacios de mas). Por cada
-    trabajo afectado se reemplazan sus actividades anteriores por las del
-    CSV nuevo."""
+    coincida (sin distinguir mayusculas ni espacios de mas). Las filas que
+    coincidan (por actividad+tipificacion+hw-actividad) con una actividad
+    ya existente en ese trabajo se actualizan en su lugar; las demas se
+    insertan como nuevas. Nunca se borra una actividad existente aqui, para
+    no perder el historial de avance ya reportado sobre ella (cascade
+    delete de avances_diarios_detalle)."""
     try:
         texto = archivo.file.read().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -830,12 +864,41 @@ def importar_actividades(
 
     if trabajo_ids_afectados:
         try:
-            supabase.table("actividades").delete().in_("trabajo_id", trabajo_ids_afectados).execute()
-            filas_a_insertar = [
-                fila for filas in filas_por_trabajo.values() for fila in filas
-            ]
-            supabase.table("actividades").insert(filas_a_insertar).execute()
-            actividades_cargadas = len(filas_a_insertar)
+            existentes_resp = (
+                supabase.table("actividades")
+                .select("id, trabajo_id, actividad, tipificacion, hw_actividad")
+                .in_("trabajo_id", trabajo_ids_afectados)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al comparar con las actividades existentes.",
+            ) from exc
+
+        id_existente_por_clave = {
+            (e["trabajo_id"], *_clave_actividad(e["actividad"], e["tipificacion"], e["hw_actividad"])): e["id"]
+            for e in existentes_resp.data or []
+        }
+
+        filas_a_guardar: list[dict] = []
+        for trabajo_id, filas in filas_por_trabajo.items():
+            for fila in filas:
+                clave = (
+                    trabajo_id,
+                    *_clave_actividad(fila["actividad"], fila["tipificacion"], fila["hw_actividad"]),
+                )
+                id_existente = id_existente_por_clave.get(clave)
+                if id_existente:
+                    fila = {**fila, "id": id_existente}
+                filas_a_guardar.append(fila)
+
+        try:
+            # upsert (no delete+insert): las filas que traen "id" actualizan
+            # esa fila existente sin tocar avances_diarios_detalle; las que
+            # no traen "id" se insertan como actividades nuevas.
+            supabase.table("actividades").upsert(filas_a_guardar).execute()
+            actividades_cargadas = len(filas_a_guardar)
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -846,6 +909,218 @@ def importar_actividades(
         "actividades_cargadas": actividades_cargadas,
         "sitios_no_encontrados": sitios_no_encontrados,
     }
+
+
+def _obtener_trabajo_o_404(trabajo_id: str) -> None:
+    try:
+        supabase.table("trabajos").select("id").eq("id", trabajo_id).single().execute()
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontro el trabajo.") from exc
+
+
+def _obtener_actividad_del_trabajo_o_404(trabajo_id: str, actividad_id: str) -> None:
+    try:
+        supabase.table("actividades").select("id").eq("id", actividad_id).eq(
+            "trabajo_id", trabajo_id
+        ).single().execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro la actividad en ese trabajo.",
+        ) from exc
+
+
+def _cantidad_acumulada(actividad_id: str) -> float:
+    try:
+        detalle_resp = (
+            supabase.table("avances_diarios_detalle")
+            .select("cantidad")
+            .eq("actividad_id", actividad_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al validar el avance reportado.",
+        ) from exc
+    return sum(d["cantidad"] for d in detalle_resp.data or [])
+
+
+@app.get(
+    "/api/admin/trabajos/{trabajo_id}/actividades",
+    response_model=list[ActividadAdminOut],
+)
+def listar_actividades_de_trabajo(
+    trabajo_id: str,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> list[dict]:
+    """Lista las actividades de un trabajo para el popup de edicion,
+    marcando cuales ya tienen avance reportado (esas no se pueden borrar)."""
+    _obtener_trabajo_o_404(trabajo_id)
+
+    try:
+        actividades_resp = (
+            supabase.table("actividades")
+            .select("id, actividad, tipificacion, hw_actividad, qty, avance")
+            .eq("trabajo_id", trabajo_id)
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener las actividades.",
+        ) from exc
+
+    actividades = actividades_resp.data or []
+    if not actividades:
+        return []
+
+    actividad_ids = [a["id"] for a in actividades]
+    try:
+        detalle_resp = (
+            supabase.table("avances_diarios_detalle")
+            .select("actividad_id")
+            .in_("actividad_id", actividad_ids)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al validar el avance reportado.",
+        ) from exc
+
+    ids_con_avance = {d["actividad_id"] for d in detalle_resp.data or []}
+    for actividad in actividades:
+        actividad["tiene_avance"] = actividad["id"] in ids_con_avance
+
+    return actividades
+
+
+@app.post(
+    "/api/admin/trabajos/{trabajo_id}/actividades",
+    response_model=ActividadAdminOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_actividad_de_trabajo(
+    trabajo_id: str,
+    payload: ActividadCreate,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    _obtener_trabajo_o_404(trabajo_id)
+
+    try:
+        creado = (
+            supabase.table("actividades")
+            .insert(
+                {
+                    "trabajo_id": trabajo_id,
+                    "actividad": payload.actividad,
+                    "tipificacion": payload.tipificacion,
+                    "hw_actividad": payload.hw_actividad,
+                    "qty": payload.qty,
+                    "avance": payload.avance,
+                }
+            )
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al crear la actividad.",
+        ) from exc
+
+    if not creado.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo confirmar la creacion de la actividad.",
+        )
+
+    fila = creado.data[0]
+    fila["tiene_avance"] = False
+    return fila
+
+
+@app.put(
+    "/api/admin/trabajos/{trabajo_id}/actividades/{actividad_id}",
+    response_model=ActividadAdminOut,
+)
+def actualizar_actividad_de_trabajo(
+    trabajo_id: str,
+    actividad_id: str,
+    payload: ActividadUpdate,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    _obtener_actividad_del_trabajo_o_404(trabajo_id, actividad_id)
+    acumulado = _cantidad_acumulada(actividad_id)
+
+    if acumulado > 0 and payload.qty is not None:
+        try:
+            nuevo_qty = float(payload.qty)
+        except ValueError:
+            nuevo_qty = None
+        if nuevo_qty is not None and nuevo_qty < acumulado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Ya se reportaron {acumulado:g} unidades; el qty no puede "
+                    "quedar por debajo de eso."
+                ),
+            )
+
+    try:
+        response = (
+            supabase.table("actividades")
+            .update(
+                {
+                    "actividad": payload.actividad,
+                    "tipificacion": payload.tipificacion,
+                    "hw_actividad": payload.hw_actividad,
+                    "qty": payload.qty,
+                    "avance": payload.avance,
+                }
+            )
+            .eq("id", actividad_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al actualizar la actividad.",
+        ) from exc
+
+    if not response.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontro la actividad.")
+
+    fila = response.data[0]
+    fila["tiene_avance"] = acumulado > 0
+    return fila
+
+
+@app.delete(
+    "/api/admin/trabajos/{trabajo_id}/actividades/{actividad_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def eliminar_actividad_de_trabajo(
+    trabajo_id: str,
+    actividad_id: str,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> None:
+    _obtener_actividad_del_trabajo_o_404(trabajo_id, actividad_id)
+
+    if _cantidad_acumulada(actividad_id) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede eliminar: esta actividad ya tiene avance reportado por el lider.",
+        )
+
+    try:
+        supabase.table("actividades").delete().eq("id", actividad_id).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al eliminar la actividad.",
+        ) from exc
 
 
 @app.get("/api/mis-trabajos", response_model=list[TrabajoConActividadesOut])
