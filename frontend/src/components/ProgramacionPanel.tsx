@@ -187,14 +187,13 @@ export default function ProgramacionPanel() {
   // Agrupa los sites activos de esta fecha por el lider que tienen
   // asignado (segun la tabla programacion), para que el coordinador
   // trabaje "por lider" en vez de "por site": elige un lider y le agrega
-  // o quita sites, en vez de ir fila por fila entre todos los sites.
+  // o quita sites, en vez de ir fila por fila entre todos los sites. Los
+  // sites sin asignar no se listan aparte; solo aparecen como opcion
+  // dentro del selector "+ Agregar site..." de cada lider.
   const filasPorLider: Record<string, AvanceDiarioAdmin[]> = {};
-  const sinAsignar: AvanceDiarioAdmin[] = [];
   filas.forEach((fila) => {
     if (fila.lider_id) {
       (filasPorLider[fila.lider_id] ??= []).push(fila);
-    } else {
-      sinAsignar.push(fila);
     }
   });
 
@@ -332,19 +331,6 @@ export default function ProgramacionPanel() {
               );
             })}
           </div>
-
-          {sinAsignar.length > 0 && (
-            <div className="mt-6 pt-4 border-t border-slate-200">
-              <h3 className="text-sm font-semibold text-slate-700 mb-2">Sites sin asignar</h3>
-              <ul className="text-sm text-slate-600 space-y-1">
-                {sinAsignar.map((f) => (
-                  <li key={f.trabajo_id}>
-                    {f.site} <span className="text-slate-400">— {f.zona}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </div>
     </div>
