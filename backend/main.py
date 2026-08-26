@@ -1153,9 +1153,17 @@ def listar_mis_trabajos(
         return []
 
     try:
+        # Las actividades viajan incrustadas (embed de PostgREST) en la
+        # misma consulta, en vez de una consulta aparte a la tabla
+        # actividades: esta es la pantalla que mas seguido recarga el
+        # lider (su bandeja del dia), asi que cada round-trip que se
+        # quita aqui se nota.
         trabajos_resp = (
             supabase.table("trabajos")
-            .select("id, id_smp, site, zona, lider_id, estado")
+            .select(
+                "id, id_smp, site, zona, lider_id, estado, "
+                "actividades(id, actividad, tipificacion, hw_actividad, qty, avance)"
+            )
             .in_("id", trabajo_ids_hoy)
             .eq("estado", "asignado")
             .order("created_at", desc=True)
@@ -1168,29 +1176,8 @@ def listar_mis_trabajos(
         ) from exc
 
     trabajos = trabajos_resp.data or []
-    if not trabajos:
-        return []
-
-    trabajo_ids = [t["id"] for t in trabajos]
-    try:
-        actividades_resp = (
-            supabase.table("actividades")
-            .select("id, trabajo_id, actividad, tipificacion, hw_actividad, qty, avance")
-            .in_("trabajo_id", trabajo_ids)
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener las actividades.",
-        ) from exc
-
-    actividades_por_trabajo: dict[str, list[dict]] = {}
-    for actividad in actividades_resp.data or []:
-        actividades_por_trabajo.setdefault(actividad["trabajo_id"], []).append(actividad)
-
     for trabajo in trabajos:
-        trabajo["actividades"] = actividades_por_trabajo.get(trabajo["id"], [])
+        trabajo["actividades"] = trabajo.get("actividades") or []
 
     return trabajos
 
@@ -1219,9 +1206,12 @@ def registrar_avance_diario(
 
     if payload.detalles:
         try:
+            # El acumulado ya reportado por actividad viaja incrustado
+            # (embed de PostgREST) en la misma consulta, en vez de una
+            # consulta aparte a avances_diarios_detalle.
             actividades_resp = (
                 supabase.table("actividades")
-                .select("id, actividad, qty")
+                .select("id, actividad, qty, avances_diarios_detalle(cantidad)")
                 .eq("trabajo_id", trabajo_id)
                 .execute()
             )
@@ -1238,24 +1228,10 @@ def registrar_avance_diario(
                 detail="Una de las actividades no pertenece a este trabajo.",
             )
 
-        try:
-            acumulados_resp = (
-                supabase.table("avances_diarios_detalle")
-                .select("actividad_id, cantidad")
-                .in_("actividad_id", [d.actividad_id for d in payload.detalles])
-                .execute()
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error interno al validar el avance acumulado.",
-            ) from exc
-
-        acumulado_por_actividad: dict[str, int] = {}
-        for fila in acumulados_resp.data or []:
-            acumulado_por_actividad[fila["actividad_id"]] = (
-                acumulado_por_actividad.get(fila["actividad_id"], 0) + fila["cantidad"]
-            )
+        acumulado_por_actividad: dict[str, int] = {
+            actividad_id: sum(d["cantidad"] for d in actividad.get("avances_diarios_detalle") or [])
+            for actividad_id, actividad in actividades_del_trabajo.items()
+        }
 
         for detalle in payload.detalles:
             actividad = actividades_del_trabajo[detalle.actividad_id]
