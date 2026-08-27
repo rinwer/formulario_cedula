@@ -15,12 +15,14 @@ const initialPopup: PopupState = { visible: false, type: "success", message: "" 
 const ROLE_LABEL: Record<string, string> = {
   administrador: "Administrador",
   coordinador: "Coordinador",
+  visualizador: "Visualizador",
   lider_cuadrilla: "Lider de cuadrilla",
 };
 
 const ROLE_BADGE: Record<string, string> = {
   administrador: "bg-purple-950 text-purple-400",
   coordinador: "bg-sky-950 text-sky-400",
+  visualizador: "bg-amber-950 text-amber-400",
   lider_cuadrilla: "bg-emerald-950 text-emerald-400",
 };
 
@@ -240,6 +242,7 @@ export default function PerfilesPanel() {
             >
               <option value="lider_cuadrilla">Lider de cuadrilla</option>
               <option value="coordinador">Coordinador</option>
+              <option value="visualizador">Visualizador</option>
               <option value="administrador">Administrador</option>
             </select>
           </div>
@@ -353,6 +356,7 @@ export default function PerfilesPanel() {
                           >
                             <option value="lider_cuadrilla">Lider de cuadrilla</option>
                             <option value="coordinador">Coordinador</option>
+                            <option value="visualizador">Visualizador</option>
                             <option value="administrador">Administrador</option>
                           </select>
                         ) : (

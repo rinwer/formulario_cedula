@@ -107,7 +107,7 @@ def get_usuario_actual(
     )
 
 
-ROLES_VALIDOS = ("administrador", "coordinador", "lider_cuadrilla")
+ROLES_VALIDOS = ("administrador", "coordinador", "visualizador", "lider_cuadrilla")
 
 
 def requerir_administrador(
@@ -133,6 +133,19 @@ def requerir_staff(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permiso para realizar esta accion.",
+        )
+    return usuario
+
+
+def requerir_acceso_daily(
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> UsuarioActual:
+    """El visualizador es un rol de solo lectura: unicamente puede ver el
+    Daily (ni Trabajos/Programacion ni, mucho menos, Perfiles)."""
+    if usuario.role not in ("administrador", "coordinador", "visualizador"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver esta informacion.",
         )
     return usuario
 
@@ -1691,7 +1704,7 @@ def _parsear_fecha_query(fecha: str | None, valor_por_defecto: date) -> date:
 @app.get("/api/admin/avances-diarios", response_model=list[AvanceDiarioAdminOut])
 def listar_avances_diarios_admin(
     fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto hoy"),
-    _admin: UsuarioActual = Depends(requerir_staff),
+    _admin: UsuarioActual = Depends(requerir_acceso_daily),
 ) -> list[dict]:
     """Vista 'Daily' del administrador: por cada trabajo QUE ESTABA
     PROGRAMADO ese dia (tabla programacion), si el lider ya actualizo el

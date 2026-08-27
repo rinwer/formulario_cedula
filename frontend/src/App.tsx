@@ -65,13 +65,25 @@ export default function App() {
     supabase.auth.signOut();
   };
 
-  const esStaff = perfil?.role === "administrador" || perfil?.role === "coordinador";
+  // "Staff" = cualquier rol que usa el layout con pestanas (en vez de la
+  // bandeja del lider_cuadrilla): administrador, coordinador y
+  // visualizador (este ultimo de solo lectura, solo ve Daily).
+  const esStaff =
+    perfil?.role === "administrador" ||
+    perfil?.role === "coordinador" ||
+    perfil?.role === "visualizador";
 
-  // El coordinador ve las mismas pestanas operativas que el administrador
-  // (Trabajos/Programacion/Daily), pero no Perfiles: solo el
-  // administrador gestiona usuarios.
+  // Cada rol ve un subconjunto de pestanas: administrador las ve todas;
+  // coordinador todo menos Perfiles (no gestiona usuarios); visualizador
+  // solo Daily (rol de solo lectura).
   const tabsVisibles =
-    perfil?.role === "administrador" ? TABS : TABS.filter((tab) => tab.key !== "perfiles");
+    perfil?.role === "administrador"
+      ? TABS
+      : perfil?.role === "coordinador"
+      ? TABS.filter((tab) => tab.key !== "perfiles")
+      : perfil?.role === "visualizador"
+      ? TABS.filter((tab) => tab.key === "daily")
+      : [];
 
   // tabActiva arranca en "perfiles" antes de saber el rol; si el usuario
   // logueado es coordinador esa pestana no existe para el, asi que se
@@ -164,8 +176,14 @@ export default function App() {
         {esStaff ? (
           <>
             {tabEfectiva === "perfiles" && perfil.role === "administrador" && <PerfilesPanel />}
-            {tabEfectiva === "asignacion" && <AsignacionPanel />}
-            {tabEfectiva === "programacion" && <ProgramacionPanel />}
+            {tabEfectiva === "asignacion" &&
+              (perfil.role === "administrador" || perfil.role === "coordinador") && (
+                <AsignacionPanel />
+              )}
+            {tabEfectiva === "programacion" &&
+              (perfil.role === "administrador" || perfil.role === "coordinador") && (
+                <ProgramacionPanel />
+              )}
             {tabEfectiva === "daily" && <DailyPanel />}
           </>
         ) : (
