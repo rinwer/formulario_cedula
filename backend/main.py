@@ -1517,9 +1517,6 @@ def obtener_vista_trabajos_por_fecha(
         trabajo["_lider_perfil"] = lider_perfil
         trabajos.append(trabajo)
 
-    if solo_programados:
-        trabajos = [t for t in trabajos if t.get("_lider_id")]
-
     if not trabajos:
         return []
 
@@ -1590,6 +1587,21 @@ def obtener_vista_trabajos_por_fecha(
     avances_por_trabajo: dict[str, list[dict]] = {}
     for avance in avances_del_dia:
         avances_por_trabajo.setdefault(avance["trabajo_id"], []).append(avance)
+
+    # solo_programados se aplica aqui (no antes de traer los avances) a
+    # proposito: si el lider SI reporto avance ese dia, el site se
+    # muestra aunque no haya fila en programacion para esa fecha (por
+    # ejemplo, avances de antes de que existiera la pestana Programacion,
+    # o asignados por el trabajos.lider_id ya en desuso). El hecho
+    # historico "se reporto avance este dia" nunca debe desaparecer;
+    # solo_programados descarta unicamente los sites sin nada programado
+    # NI reportado ese dia.
+    if solo_programados:
+        trabajos = [
+            t for t in trabajos if t.get("_lider_id") or avances_por_trabajo.get(t["id"])
+        ]
+        if not trabajos:
+            return []
 
     resultado = []
     for trabajo in trabajos:
