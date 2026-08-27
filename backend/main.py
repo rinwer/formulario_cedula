@@ -1361,12 +1361,20 @@ def listar_avances_diarios(
 def obtener_vista_trabajos_por_fecha(
     fecha_obj: date,
     trabajo_ids_filtro: list[str] | None = None,
+    solo_programados: bool = False,
 ) -> list[dict]:
     """Arma la vista de trabajos para una fecha (usada tanto por Daily
     como por Programacion): por cada trabajo activo, quien esta
     programado ese dia (tabla programacion), si ya actualizo el avance,
     cuanto reporto, que comentario dejo y el % de avance acumulado a esa
     fecha.
+
+    solo_programados=True (usado por Daily) descarta los trabajos que no
+    tienen a nadie programado ese dia en la tabla programacion: si el
+    coordinador no planeo ese site para esa fecha, no debe aparecer en el
+    Daily como si tuviera avance esperado. Programacion sigue usando
+    solo_programados=False porque ahi se necesita ver tambien los sites
+    sin programar, para poder asignarlos.
 
     Para minimizar los round-trips a Supabase (cada uno pesa varios
     cientos de ms en un backend serverless), esta funcion agrupa lo que
@@ -1508,6 +1516,9 @@ def obtener_vista_trabajos_por_fecha(
         trabajo["_lider_id"] = lider_id
         trabajo["_lider_perfil"] = lider_perfil
         trabajos.append(trabajo)
+
+    if solo_programados:
+        trabajos = [t for t in trabajos if t.get("_lider_id")]
 
     if not trabajos:
         return []
@@ -1651,11 +1662,13 @@ def listar_avances_diarios_admin(
     fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto hoy"),
     _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> list[dict]:
-    """Vista 'Daily' del administrador: por cada trabajo, si el lider ya
-    actualizo el avance de un dia dado (por defecto hoy), cuanto reporto
-    y que comentario dejo."""
+    """Vista 'Daily' del administrador: por cada trabajo QUE ESTABA
+    PROGRAMADO ese dia (tabla programacion), si el lider ya actualizo el
+    avance de un dia dado (por defecto hoy), cuanto reporto y que
+    comentario dejo. Un site sin nadie programado esa fecha no aparece:
+    no hay nada planeado que esperar de el ese dia."""
     fecha_obj = _parsear_fecha_query(fecha, datetime.now(ZONA_COLOMBIA).date())
-    return obtener_vista_trabajos_por_fecha(fecha_obj)
+    return obtener_vista_trabajos_por_fecha(fecha_obj, solo_programados=True)
 
 
 @app.get("/api/admin/programacion", response_model=list[AvanceDiarioAdminOut])
