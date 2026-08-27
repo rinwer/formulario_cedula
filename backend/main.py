@@ -1697,6 +1697,18 @@ def listar_programacion(
     return obtener_vista_trabajos_por_fecha(fecha_obj)
 
 
+def _validar_fecha_no_pasada(fecha_obj: date) -> None:
+    """La Programacion es una herramienta de planeacion hacia adelante:
+    no tiene sentido dejar reasignar o quitar el lider de un dia que ya
+    paso (eso ya ocurrio, se reescribiria el historial). Se puede seguir
+    consultando un dia pasado (GET), solo se bloquean los cambios."""
+    if fecha_obj < datetime.now(ZONA_COLOMBIA).date():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede modificar la programacion de un dia que ya paso.",
+        )
+
+
 @app.put("/api/admin/programacion", response_model=AvanceDiarioAdminOut)
 def asignar_programacion(
     payload: ProgramacionAsignar,
@@ -1707,6 +1719,7 @@ def asignar_programacion(
     actualiza la fila existente en vez de duplicarla."""
     obtener_perfil_lider(payload.lider_id)  # valida rol lider_cuadrilla y habilitado
     fecha_obj = date.fromisoformat(payload.fecha)
+    _validar_fecha_no_pasada(fecha_obj)
 
     try:
         supabase.table("programacion").upsert(
@@ -1743,12 +1756,13 @@ def quitar_programacion(
     (el site vuelve a quedar 'sin asignar' ese dia). Usado por la vista de
     Programacion agrupada por lider, para mover o quitar un site."""
     try:
-        date.fromisoformat(fecha)
+        fecha_obj = date.fromisoformat(fecha)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Fecha invalida, usa el formato YYYY-MM-DD.",
         ) from exc
+    _validar_fecha_no_pasada(fecha_obj)
 
     try:
         supabase.table("programacion").delete().eq("trabajo_id", trabajo_id).eq(

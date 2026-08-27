@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
 import { AvanceDiarioAdmin, Usuario } from "../types";
@@ -17,10 +17,11 @@ function mananaIso(): string {
 type FilaProgramacionProps = {
   fila: AvanceDiarioAdmin;
   ocupado: boolean;
+  bloqueado: boolean;
   onQuitar: (trabajoId: string) => void;
 };
 
-function FilaProgramacion({ fila, ocupado, onQuitar }: FilaProgramacionProps) {
+function FilaProgramacion({ fila, ocupado, bloqueado, onQuitar }: FilaProgramacionProps) {
   return (
     <tr className="border-b border-slate-100 last:border-0 align-top">
       <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
@@ -61,13 +62,69 @@ function FilaProgramacion({ fila, ocupado, onQuitar }: FilaProgramacionProps) {
         <button
           type="button"
           onClick={() => onQuitar(fila.trabajo_id)}
-          disabled={ocupado}
+          disabled={ocupado || bloqueado}
           className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium"
         >
           {ocupado ? "..." : "Quitar"}
         </button>
       </td>
     </tr>
+  );
+}
+
+type AgregarSiteControlProps = {
+  liderId: string;
+  opciones: AvanceDiarioAdmin[];
+  deshabilitado: boolean;
+  onAgregar: (trabajoId: string) => void;
+};
+
+function AgregarSiteControl({ liderId, opciones, deshabilitado, onAgregar }: AgregarSiteControlProps) {
+  const [busqueda, setBusqueda] = useState("");
+
+  const coincidencia = opciones.find(
+    (o) => o.site.trim().toLowerCase() === busqueda.trim().toLowerCase()
+  );
+
+  const agregar = () => {
+    if (!coincidencia) return;
+    onAgregar(coincidencia.trabajo_id);
+    setBusqueda("");
+  };
+
+  const listaId = `sites-disponibles-${liderId}`;
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        list={listaId}
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            agregar();
+          }
+        }}
+        placeholder="Buscar site por nombre..."
+        disabled={deshabilitado}
+        className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
+      />
+      <datalist id={listaId}>
+        {opciones.map((o) => (
+          <option key={o.trabajo_id} value={o.site} />
+        ))}
+      </datalist>
+      <button
+        type="button"
+        onClick={agregar}
+        disabled={deshabilitado || !coincidencia}
+        className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 font-medium px-3 py-1 rounded-md whitespace-nowrap"
+      >
+        Agregar
+      </button>
+    </div>
   );
 }
 
@@ -82,6 +139,11 @@ export default function ProgramacionPanel() {
   const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
 
   const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
+
+  // La Programacion es hacia adelante: se puede seguir consultando un
+  // dia que ya paso (para saber quien estaba asignado), pero no tiene
+  // sentido reasignar o quitar el lider de un dia que ya ocurrio.
+  const esFechaPasada = fecha < hoyIso();
 
   const cargarLideres = async () => {
     try {
@@ -189,7 +251,7 @@ export default function ProgramacionPanel() {
   // trabaje "por lider" en vez de "por site": elige un lider y le agrega
   // o quita sites, en vez de ir fila por fila entre todos los sites. Los
   // sites sin asignar no se listan aparte; solo aparecen como opcion
-  // dentro del selector "+ Agregar site..." de cada lider.
+  // dentro del buscador "Agregar site" de cada lider.
   const filasPorLider: Record<string, AvanceDiarioAdmin[]> = {};
   filas.forEach((fila) => {
     if (fila.lider_id) {
@@ -231,6 +293,13 @@ export default function ProgramacionPanel() {
           {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
           {errorAsignacion && <p className="text-sm text-red-600 mb-4">{errorAsignacion}</p>}
 
+          {esFechaPasada && (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+              Este dia ya paso: puedes consultar quien estaba asignado, pero no se puede asignar
+              ni quitar lideres.
+            </p>
+          )}
+
           {!cargando && !error && filas.length === 0 && (
             <p className="text-sm text-slate-500">No hay trabajos activos para programar.</p>
           )}
@@ -248,22 +317,14 @@ export default function ProgramacionPanel() {
                 <div key={lider.id} className="border border-slate-200 rounded-lg p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                     <h3 className="font-semibold text-slate-800">{lider.nombre_completo}</h3>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) asignarLider(e.target.value, lider.id);
-                      }}
-                      disabled={trabajoOcupadoId !== null || sitesParaAgregar.length === 0}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">+ Agregar site...</option>
-                      {sitesParaAgregar.map((f) => (
-                        <option key={f.trabajo_id} value={f.trabajo_id}>
-                          {f.site}
-                          {f.lider_id ? ` (asignado a ${f.lider_nombre ?? f.lider_email ?? "otro"})` : ""}
-                        </option>
-                      ))}
-                    </select>
+                    <AgregarSiteControl
+                      liderId={lider.id}
+                      opciones={sitesParaAgregar}
+                      deshabilitado={
+                        trabajoOcupadoId !== null || esFechaPasada || sitesParaAgregar.length === 0
+                      }
+                      onAgregar={(trabajoId) => asignarLider(trabajoId, lider.id)}
+                    />
                   </div>
 
                   {sitesDelLider.length === 0 ? (
@@ -287,6 +348,7 @@ export default function ProgramacionPanel() {
                             key={fila.trabajo_id}
                             fila={fila}
                             ocupado={trabajoOcupadoId === fila.trabajo_id}
+                            bloqueado={esFechaPasada}
                             onQuitar={quitarAsignacion}
                           />
                         ))}
@@ -322,6 +384,7 @@ export default function ProgramacionPanel() {
                           key={fila.trabajo_id}
                           fila={fila}
                           ocupado={trabajoOcupadoId === fila.trabajo_id}
+                          bloqueado={esFechaPasada}
                           onQuitar={quitarAsignacion}
                         />
                       ))}
