@@ -70,8 +70,8 @@ export default function App() {
 
   if (cargandoSesion) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <p className="text-slate-500 text-sm">Cargando...</p>
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
+        <p className="text-zinc-400 text-sm">Cargando...</p>
       </div>
     );
   }
@@ -82,12 +82,12 @@ export default function App() {
 
   if (!perfil) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-white rounded-xl shadow-md p-5 sm:p-8 text-center">
-          <p className="text-sm text-slate-600 mb-4">Cargando tu perfil...</p>
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-zinc-800 rounded-xl shadow-md p-5 sm:p-8 text-center">
+          <p className="text-sm text-zinc-300 mb-4">Cargando tu perfil...</p>
           <button
             onClick={cerrarSesion}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            className="text-sm text-cobre-500 hover:text-cobre-300 font-medium"
           >
             Cerrar sesion
           </button>
@@ -97,8 +97,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b border-slate-200">
+    <div className="min-h-screen bg-zinc-900">
+      <header className="bg-zinc-800 border-b border-zinc-700">
         <div
           className={
             "mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3 " +
@@ -106,7 +106,7 @@ export default function App() {
           }
         >
           <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-            <span className="font-semibold text-slate-800">Gestion de Usuarios</span>
+            <span className="font-semibold text-zinc-50">Gestion de Usuarios</span>
             {perfil.role === "administrador" && (
               <nav className="flex gap-4">
                 {TABS.map((tab) => (
@@ -116,8 +116,8 @@ export default function App() {
                     className={
                       "text-sm font-medium pb-1 border-b-2 transition-colors " +
                       (tabActiva === tab.key
-                        ? "text-blue-600 border-blue-600"
-                        : "text-slate-500 border-transparent hover:text-slate-700")
+                        ? "text-cobre-500 border-cobre-500"
+                        : "text-zinc-400 border-transparent hover:text-zinc-200")
                     }
                   >
                     {tab.label}
@@ -128,12 +128,12 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4">
-            <span className="text-sm text-slate-500 max-w-[45vw] sm:max-w-none truncate">
+            <span className="text-sm text-zinc-400 max-w-[45vw] sm:max-w-none truncate">
               {perfil.nombre_completo || perfil.email}
             </span>
             <button
               onClick={cerrarSesion}
-              className="text-sm text-slate-600 hover:text-slate-900 font-medium whitespace-nowrap"
+              className="text-sm text-zinc-300 hover:text-white font-medium whitespace-nowrap"
             >
               Cerrar sesion
             </button>

@@ -23,14 +23,14 @@ type FilaProgramacionProps = {
 
 function FilaProgramacion({ fila, ocupado, bloqueado, onQuitar }: FilaProgramacionProps) {
   return (
-    <tr className="border-b border-slate-100 last:border-0 align-top">
-      <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
-      <td className="py-2 pr-4 text-slate-700">{fila.zona}</td>
+    <tr className="border-b border-zinc-800 last:border-0 align-top">
+      <td className="py-2 pr-4 text-zinc-200">{fila.site}</td>
+      <td className="py-2 pr-4 text-zinc-200">{fila.zona}</td>
       <td className="py-2 pr-4">
         <span
           className={
             "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
-            (fila.actualizado ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")
+            (fila.actualizado ? "bg-emerald-950 text-emerald-400" : "bg-amber-950 text-amber-400")
           }
         >
           {fila.actualizado ? "Actualizado" : "Sin actualizar"}
@@ -38,24 +38,24 @@ function FilaProgramacion({ fila, ocupado, bloqueado, onQuitar }: FilaProgramaci
       </td>
       <td className="py-2 pr-4">
         {fila.porcentaje_avance === null ? (
-          <span className="text-slate-400">—</span>
+          <span className="text-zinc-500">—</span>
         ) : (
           <span
             className={
               "text-xs font-semibold " +
-              (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
+              (fila.porcentaje_avance >= 100 ? "text-emerald-400" : "text-zinc-400")
             }
           >
             {fila.porcentaje_avance}%
           </span>
         )}
       </td>
-      <td className="py-2 pr-4 text-xs text-slate-600">
+      <td className="py-2 pr-4 text-xs text-zinc-400">
         {fila.detalle.length === 0
           ? "—"
           : fila.detalle.map((d) => `${d.hw_actividad ?? d.actividad ?? "—"}: ${d.cantidad}`).join(" · ")}
       </td>
-      <td className="py-2 pr-4 text-slate-700">
+      <td className="py-2 pr-4 text-zinc-200">
         {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
       </td>
       <td className="py-2 pr-4 text-right">
@@ -63,7 +63,7 @@ function FilaProgramacion({ fila, ocupado, bloqueado, onQuitar }: FilaProgramaci
           type="button"
           onClick={() => onQuitar(fila.trabajo_id)}
           disabled={ocupado || bloqueado}
-          className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium"
+          className="text-sm text-red-500 hover:text-red-300 disabled:text-zinc-600 font-medium"
         >
           {ocupado ? "..." : "Quitar"}
         </button>
@@ -109,7 +109,7 @@ function AgregarSiteControl({ liderId, opciones, deshabilitado, onAgregar }: Agr
         }}
         placeholder="Buscar site por nombre..."
         disabled={deshabilitado}
-        className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
+        className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500 disabled:bg-zinc-800"
       />
       <datalist id={listaId}>
         {opciones.map((o) => (
@@ -120,7 +120,7 @@ function AgregarSiteControl({ liderId, opciones, deshabilitado, onAgregar }: Agr
         type="button"
         onClick={agregar}
         disabled={deshabilitado || !coincidencia}
-        className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 font-medium px-3 py-1 rounded-md whitespace-nowrap"
+        className="text-sm text-white bg-cobre-600 hover:bg-cobre-500 disabled:bg-cobre-900 font-medium px-3 py-1 rounded-md whitespace-nowrap"
       >
         Agregar
       </button>
@@ -268,23 +268,23 @@ export default function ProgramacionPanel() {
   );
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
+    <div className="bg-zinc-800 rounded-xl shadow-md p-5 sm:p-8">
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-lg font-semibold text-slate-800">Programacion</h1>
+        <h1 className="text-lg font-semibold text-zinc-50">Programacion</h1>
         <button
           onClick={() => cargar(fecha)}
           disabled={cargando}
-          className="text-sm text-blue-600 hover:text-blue-800 disabled:text-slate-400 font-medium"
+          className="text-sm text-cobre-500 hover:text-cobre-300 disabled:text-zinc-600 font-medium"
         >
           {cargando ? "Actualizando..." : "Actualizar"}
         </button>
       </div>
-      <p className="text-sm text-slate-500 mb-6 capitalize">{fechaFormateada}</p>
+      <p className="text-sm text-zinc-400 mb-6 capitalize">{fechaFormateada}</p>
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="w-full lg:w-64 shrink-0">
           <Calendario fechaSeleccionada={fecha} onSeleccionar={setFecha} fechaMinima={hoyIso()} />
-          <p className="text-xs text-slate-400 mt-2">
+          <p className="text-xs text-zinc-500 mt-2">
             Por defecto muestra el dia siguiente a hoy, para programar el trabajo de manana. La
             Programacion es hacia adelante: para consultar como quedo programado un dia que ya
             paso, revisa el Daily.
@@ -292,15 +292,15 @@ export default function ProgramacionPanel() {
         </div>
 
         <div className="flex-1 overflow-x-auto">
-          {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
-          {errorAsignacion && <p className="text-sm text-red-600 mb-4">{errorAsignacion}</p>}
+          {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
+          {errorAsignacion && <p className="text-sm text-red-400 mb-4">{errorAsignacion}</p>}
 
           {!cargando && !error && filas.length === 0 && (
-            <p className="text-sm text-slate-500">No hay trabajos activos para programar.</p>
+            <p className="text-sm text-zinc-400">No hay trabajos activos para programar.</p>
           )}
 
           {!cargando && !error && filas.length > 0 && lideresHabilitados.length === 0 && (
-            <p className="text-sm text-slate-500">No hay lideres de cuadrilla habilitados.</p>
+            <p className="text-sm text-zinc-400">No hay lideres de cuadrilla habilitados.</p>
           )}
 
           <div className="space-y-5">
@@ -309,9 +309,9 @@ export default function ProgramacionPanel() {
               const sitesParaAgregar = filas.filter((f) => f.lider_id !== lider.id);
 
               return (
-                <div key={lider.id} className="border border-slate-200 rounded-lg p-4">
+                <div key={lider.id} className="border border-zinc-700 rounded-lg p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                    <h3 className="font-semibold text-slate-800">{lider.nombre_completo}</h3>
+                    <h3 className="font-semibold text-zinc-50">{lider.nombre_completo}</h3>
                     <AgregarSiteControl
                       liderId={lider.id}
                       opciones={sitesParaAgregar}
@@ -323,11 +323,11 @@ export default function ProgramacionPanel() {
                   </div>
 
                   {sitesDelLider.length === 0 ? (
-                    <p className="text-sm text-slate-400">Sin sites asignados para este dia.</p>
+                    <p className="text-sm text-zinc-500">Sin sites asignados para este dia.</p>
                   ) : (
                     <table className="w-full text-left text-sm">
                       <thead>
-                        <tr className="border-b border-slate-200 text-slate-500">
+                        <tr className="border-b border-zinc-700 text-zinc-400">
                           <th className="py-2 pr-4 font-medium">Site</th>
                           <th className="py-2 pr-4 font-medium">Zona</th>
                           <th className="py-2 pr-4 font-medium">Actualizo</th>
@@ -359,11 +359,11 @@ export default function ProgramacionPanel() {
               const nombre =
                 sitesDelLider[0]?.lider_nombre ?? sitesDelLider[0]?.lider_email ?? "Lider";
               return (
-                <div key={liderId} className="border border-amber-200 bg-amber-50/40 rounded-lg p-4">
-                  <h3 className="font-semibold text-slate-800 mb-3">{nombre} (deshabilitado)</h3>
+                <div key={liderId} className="border border-amber-800 bg-amber-950/40 rounded-lg p-4">
+                  <h3 className="font-semibold text-zinc-50 mb-3">{nombre} (deshabilitado)</h3>
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b border-slate-200 text-slate-500">
+                      <tr className="border-b border-zinc-700 text-zinc-400">
                         <th className="py-2 pr-4 font-medium">Site</th>
                         <th className="py-2 pr-4 font-medium">Zona</th>
                         <th className="py-2 pr-4 font-medium">Actualizo</th>

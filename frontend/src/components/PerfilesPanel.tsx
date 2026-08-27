@@ -189,12 +189,12 @@ export default function PerfilesPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
-        <h2 className="text-lg font-semibold text-slate-800 mb-6">Nuevo usuario</h2>
+      <div className="bg-zinc-800 rounded-xl shadow-md p-5 sm:p-8">
+        <h2 className="text-lg font-semibold text-zinc-50 mb-6">Nuevo usuario</h2>
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
           <div>
-            <label htmlFor="nombre" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="nombre" className="block text-sm font-medium text-zinc-300 mb-1">
               Nombre completo
             </label>
             <input
@@ -202,14 +202,14 @@ export default function PerfilesPanel() {
               type="text"
               value={nombreCompleto}
               onChange={(e) => setNombreCompleto(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
               placeholder="Ej: Juana Perez Gomez"
             />
-            {errores.nombre && <p className="text-sm text-red-600 mt-1">{errores.nombre}</p>}
+            {errores.nombre && <p className="text-sm text-red-400 mt-1">{errores.nombre}</p>}
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-zinc-300 mb-1">
               Correo
             </label>
             <input
@@ -217,21 +217,21 @@ export default function PerfilesPanel() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
               placeholder="usuario@ejemplo.com"
             />
-            {errores.email && <p className="text-sm text-red-600 mt-1">{errores.email}</p>}
+            {errores.email && <p className="text-sm text-red-400 mt-1">{errores.email}</p>}
           </div>
 
           <div>
-            <label htmlFor="role" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="role" className="block text-sm font-medium text-zinc-300 mb-1">
               Perfil
             </label>
             <select
               id="role"
               value={role}
               onChange={(e) => setRole(e.target.value as "administrador" | "lider_cuadrilla")}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
             >
               <option value="lider_cuadrilla">Lider de cuadrilla</option>
               <option value="administrador">Coordinador</option>
@@ -239,7 +239,7 @@ export default function PerfilesPanel() {
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1">
               Contrasena temporal
             </label>
             <input
@@ -247,11 +247,11 @@ export default function PerfilesPanel() {
               type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
               placeholder="Minimo 8 caracteres"
             />
-            {errores.password && <p className="text-sm text-red-600 mt-1">{errores.password}</p>}
-            <p className="text-xs text-slate-500 mt-1">
+            {errores.password && <p className="text-sm text-red-400 mt-1">{errores.password}</p>}
+            <p className="text-xs text-zinc-500 mt-1">
               Comunicasela al usuario por otro medio; el sistema no la envia por correo.
             </p>
           </div>
@@ -260,7 +260,7 @@ export default function PerfilesPanel() {
             <button
               type="submit"
               disabled={guardando}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium px-4 py-2 rounded-md transition-colors"
+              className="bg-cobre-600 hover:bg-cobre-500 disabled:bg-cobre-900 text-white font-medium px-4 py-2 rounded-md transition-colors"
             >
               {guardando ? "Creando..." : "Crear usuario"}
             </button>
@@ -268,29 +268,29 @@ export default function PerfilesPanel() {
         </form>
       </div>
 
-      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
+      <div className="bg-zinc-800 rounded-xl shadow-md p-5 sm:p-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-slate-800">Usuarios</h2>
+          <h2 className="text-lg font-semibold text-zinc-50">Usuarios</h2>
           <button
             onClick={cargarUsuarios}
             disabled={cargandoLista}
-            className="text-sm text-blue-600 hover:text-blue-800 disabled:text-slate-400 font-medium"
+            className="text-sm text-cobre-500 hover:text-cobre-300 disabled:text-zinc-600 font-medium"
           >
             {cargandoLista ? "Actualizando..." : "Actualizar"}
           </button>
         </div>
 
-        {errorLista && <p className="text-sm text-red-600 mb-4">{errorLista}</p>}
+        {errorLista && <p className="text-sm text-red-400 mb-4">{errorLista}</p>}
 
         {!errorLista && usuarios.length === 0 && !cargandoLista && (
-          <p className="text-sm text-slate-500">Todavia no hay usuarios registrados.</p>
+          <p className="text-sm text-zinc-400">Todavia no hay usuarios registrados.</p>
         )}
 
         {usuarios.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
+                <tr className="border-b border-zinc-700 text-zinc-400">
                   <th className="py-2 pr-4 font-medium">Nombre</th>
                   <th className="py-2 pr-4 font-medium">Correo / contrasena</th>
                   <th className="py-2 pr-4 font-medium">Rol</th>
@@ -302,35 +302,35 @@ export default function PerfilesPanel() {
                 {usuarios.map((usuario) => {
                   const editando = idEditando === usuario.id;
                   return (
-                    <tr key={usuario.id} className="border-b border-slate-100 last:border-0 align-top">
-                      <td className="py-2 pr-4 text-slate-700">
+                    <tr key={usuario.id} className="border-b border-zinc-800 last:border-0 align-top">
+                      <td className="py-2 pr-4 text-zinc-200">
                         {editando ? (
                           <input
                             type="text"
                             value={nombreEditado}
                             onChange={(e) => setNombreEditado(e.target.value)}
-                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                             autoFocus
                           />
                         ) : (
                           usuario.nombre_completo
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-slate-700">
+                      <td className="py-2 pr-4 text-zinc-200">
                         {editando ? (
                           <div className="space-y-1 min-w-[180px]">
                             <input
                               type="email"
                               value={emailEditado}
                               onChange={(e) => setEmailEditado(e.target.value)}
-                              className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                               placeholder="Correo"
                             />
                             <input
                               type="text"
                               value={passwordEditado}
                               onChange={(e) => setPasswordEditado(e.target.value)}
-                              className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                               placeholder="Nueva contrasena (opcional)"
                             />
                           </div>
@@ -345,7 +345,7 @@ export default function PerfilesPanel() {
                             onChange={(e) =>
                               setRolEditado(e.target.value as "administrador" | "lider_cuadrilla")
                             }
-                            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                           >
                             <option value="lider_cuadrilla">Lider de cuadrilla</option>
                             <option value="administrador">Coordinador</option>
@@ -355,8 +355,8 @@ export default function PerfilesPanel() {
                             className={
                               "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
                               (usuario.role === "administrador"
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-emerald-100 text-emerald-700")
+                                ? "bg-purple-950 text-purple-400"
+                                : "bg-emerald-950 text-emerald-400")
                             }
                           >
                             {ROLE_LABEL[usuario.role] ?? usuario.role}
@@ -365,12 +365,12 @@ export default function PerfilesPanel() {
                       </td>
                       <td className="py-2 pr-4">
                         {editando ? (
-                          <label className="flex items-center gap-2 text-sm text-slate-700">
+                          <label className="flex items-center gap-2 text-sm text-zinc-300">
                             <input
                               type="checkbox"
                               checked={activoEditado}
                               onChange={(e) => setActivoEditado(e.target.checked)}
-                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-cobre-600 focus:ring-cobre-500"
                             />
                             Habilitado
                           </label>
@@ -379,8 +379,8 @@ export default function PerfilesPanel() {
                             className={
                               "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
                               (usuario.activo
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-slate-200 text-slate-600")
+                                ? "bg-emerald-950 text-emerald-400"
+                                : "bg-zinc-700 text-zinc-300")
                             }
                           >
                             {usuario.activo ? "Habilitado" : "Deshabilitado"}
@@ -391,7 +391,7 @@ export default function PerfilesPanel() {
                         {editando ? (
                           <div className="flex flex-col items-end gap-2">
                             {errorEdicion && (
-                              <p className="text-xs text-red-600 max-w-[200px] text-right">
+                              <p className="text-xs text-red-400 max-w-[200px] text-right">
                                 {errorEdicion}
                               </p>
                             )}
@@ -401,14 +401,14 @@ export default function PerfilesPanel() {
                                 disabled={
                                   guardandoEdicion || !nombreEditado.trim() || !emailEditado.trim()
                                 }
-                                className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 px-3 py-1 rounded-md"
+                                className="text-sm text-white bg-cobre-600 hover:bg-cobre-500 disabled:bg-cobre-900 px-3 py-1 rounded-md"
                               >
                                 {guardandoEdicion ? "Guardando..." : "Guardar"}
                               </button>
                               <button
                                 onClick={cancelarEdicion}
                                 disabled={guardandoEdicion}
-                                className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md"
+                                className="text-sm text-zinc-300 hover:text-white px-3 py-1 rounded-md"
                               >
                                 Cancelar
                               </button>
@@ -417,7 +417,7 @@ export default function PerfilesPanel() {
                         ) : (
                           <button
                             onClick={() => iniciarEdicion(usuario)}
-                            className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1"
+                            className="text-sm text-cobre-500 hover:text-cobre-300 font-medium px-3 py-1"
                           >
                             Editar
                           </button>
@@ -434,7 +434,7 @@ export default function PerfilesPanel() {
 
       {popup.visible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-sm w-full p-6 text-center">
+          <div className="bg-zinc-800 rounded-lg shadow-lg max-w-sm w-full p-6 text-center">
             <div
               className={
                 "mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full text-white " +
@@ -447,17 +447,17 @@ export default function PerfilesPanel() {
             >
               {popup.type === "success" ? "✓" : popup.type === "duplicate" ? "!" : "✕"}
             </div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-1">
+            <h3 className="text-lg font-semibold text-zinc-50 mb-1">
               {popup.type === "success"
                 ? "Guardado con exito"
                 : popup.type === "duplicate"
                 ? "Correo duplicado"
                 : "Error"}
             </h3>
-            <p className="text-sm text-slate-600 mb-5">{popup.message}</p>
+            <p className="text-sm text-zinc-300 mb-5">{popup.message}</p>
             <button
               onClick={cerrarPopup}
-              className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-md text-sm"
+              className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-md text-sm"
             >
               Aceptar
             </button>
