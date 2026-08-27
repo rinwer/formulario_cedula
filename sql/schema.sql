@@ -30,8 +30,18 @@ create table if not exists public.profiles (
 -- existente):
 alter table public.profiles add column if not exists activo boolean not null default true;
 
+-- El rol "coordinador" se agrego despues de la corrida inicial de este
+-- script (cuando el check inline solo admitia administrador/
+-- lider_cuadrilla): se reemplaza esa restriccion por una que tambien
+-- permita coordinador, en vez de dejar el check viejo bloqueando altas
+-- con ese rol nuevo. coordinador puede usar Trabajos/Programacion/Daily
+-- pero NO gestionar usuarios (eso queda solo para administrador).
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check
+  check (role in ('administrador', 'coordinador', 'lider_cuadrilla'));
+
 comment on table public.profiles is 'Perfil y rol de cada usuario autenticado. 1:1 con auth.users.';
-comment on column public.profiles.role is 'Rol del usuario: administrador o lider_cuadrilla.';
+comment on column public.profiles.role is 'Rol del usuario: administrador (gestiona todo, incl. usuarios), coordinador (Trabajos/Programacion/Daily, no usuarios) o lider_cuadrilla.';
 comment on column public.profiles.activo is 'Si es false, el usuario esta deshabilitado (no puede iniciar sesion).';
 
 -- ---------------------------------------------------------

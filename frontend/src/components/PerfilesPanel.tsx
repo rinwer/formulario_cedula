@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
-import { Usuario } from "../types";
+import { Rol, Usuario } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -13,15 +13,22 @@ type PopupState = {
 const initialPopup: PopupState = { visible: false, type: "success", message: "" };
 
 const ROLE_LABEL: Record<string, string> = {
-  administrador: "Coordinador",
+  administrador: "Administrador",
+  coordinador: "Coordinador",
   lider_cuadrilla: "Lider de cuadrilla",
+};
+
+const ROLE_BADGE: Record<string, string> = {
+  administrador: "bg-purple-950 text-purple-400",
+  coordinador: "bg-sky-950 text-sky-400",
+  lider_cuadrilla: "bg-emerald-950 text-emerald-400",
 };
 
 export default function PerfilesPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombreCompleto, setNombreCompleto] = useState("");
-  const [role, setRole] = useState<"administrador" | "lider_cuadrilla">("lider_cuadrilla");
+  const [role, setRole] = useState<Rol>("lider_cuadrilla");
   const [errores, setErrores] = useState<{ email?: string; password?: string; nombre?: string }>(
     {}
   );
@@ -36,9 +43,7 @@ export default function PerfilesPanel() {
   const [nombreEditado, setNombreEditado] = useState("");
   const [emailEditado, setEmailEditado] = useState("");
   const [passwordEditado, setPasswordEditado] = useState("");
-  const [rolEditado, setRolEditado] = useState<"administrador" | "lider_cuadrilla">(
-    "lider_cuadrilla"
-  );
+  const [rolEditado, setRolEditado] = useState<Rol>("lider_cuadrilla");
   const [activoEditado, setActivoEditado] = useState(true);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
@@ -230,11 +235,12 @@ export default function PerfilesPanel() {
             <select
               id="role"
               value={role}
-              onChange={(e) => setRole(e.target.value as "administrador" | "lider_cuadrilla")}
+              onChange={(e) => setRole(e.target.value as Rol)}
               className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
             >
               <option value="lider_cuadrilla">Lider de cuadrilla</option>
-              <option value="administrador">Coordinador</option>
+              <option value="coordinador">Coordinador</option>
+              <option value="administrador">Administrador</option>
             </select>
           </div>
 
@@ -342,21 +348,18 @@ export default function PerfilesPanel() {
                         {editando ? (
                           <select
                             value={rolEditado}
-                            onChange={(e) =>
-                              setRolEditado(e.target.value as "administrador" | "lider_cuadrilla")
-                            }
+                            onChange={(e) => setRolEditado(e.target.value as Rol)}
                             className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                           >
                             <option value="lider_cuadrilla">Lider de cuadrilla</option>
-                            <option value="administrador">Coordinador</option>
+                            <option value="coordinador">Coordinador</option>
+                            <option value="administrador">Administrador</option>
                           </select>
                         ) : (
                           <span
                             className={
                               "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
-                              (usuario.role === "administrador"
-                                ? "bg-purple-950 text-purple-400"
-                                : "bg-emerald-950 text-emerald-400")
+                              (ROLE_BADGE[usuario.role] ?? "bg-zinc-700 text-zinc-300")
                             }
                           >
                             {ROLE_LABEL[usuario.role] ?? usuario.role}

@@ -107,13 +107,32 @@ def get_usuario_actual(
     )
 
 
+ROLES_VALIDOS = ("administrador", "coordinador", "lider_cuadrilla")
+
+
 def requerir_administrador(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ) -> UsuarioActual:
+    """Solo el administrador (superusuario) puede gestionar usuarios: crear,
+    editar rol/estado, resetear contrasena. Un coordinador no llega aqui."""
     if usuario.role != "administrador":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo un administrador puede realizar esta accion.",
+        )
+    return usuario
+
+
+def requerir_staff(
+    usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> UsuarioActual:
+    """Administrador y coordinador comparten las pestanas operativas
+    (Trabajos, Programacion, Daily); solo el administrador administra
+    usuarios (ver requerir_administrador)."""
+    if usuario.role not in ("administrador", "coordinador"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para realizar esta accion.",
         )
     return usuario
 
@@ -142,8 +161,8 @@ class UsuarioCreate(BaseModel):
     @field_validator("role")
     @classmethod
     def role_valido(cls, value: str) -> str:
-        if value not in ("administrador", "lider_cuadrilla"):
-            raise ValueError("El rol debe ser administrador o lider_cuadrilla")
+        if value not in ROLES_VALIDOS:
+            raise ValueError("El rol debe ser administrador, coordinador o lider_cuadrilla")
         return value
 
 
@@ -175,8 +194,8 @@ class PerfilUpdate(BaseModel):
     @field_validator("role")
     @classmethod
     def role_valido(cls, value: str) -> str:
-        if value not in ("administrador", "lider_cuadrilla"):
-            raise ValueError("El rol debe ser administrador o lider_cuadrilla")
+        if value not in ROLES_VALIDOS:
+            raise ValueError("El rol debe ser administrador, coordinador o lider_cuadrilla")
         return value
 
     @field_validator("password")
@@ -566,7 +585,7 @@ def crear_usuario(
     payload: UsuarioCreate,
     _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
-    """Crea un usuario (lider_cuadrilla o administrador) en Supabase Auth.
+    """Crea un usuario (lider_cuadrilla, coordinador o administrador) en Supabase Auth.
 
     Usa supabase.auth.admin (service_role key) para dar de alta al usuario,
     por lo que la sesion del administrador que hace la peticion (su propio
@@ -612,7 +631,7 @@ def crear_usuario(
 
 @app.get("/api/admin/trabajos", response_model=list[TrabajoOut])
 def listar_trabajos(
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> list[dict]:
     try:
         response = (
@@ -640,7 +659,7 @@ def listar_trabajos(
 )
 def crear_trabajo(
     payload: TrabajoCreate,
-    admin: UsuarioActual = Depends(requerir_administrador),
+    admin: UsuarioActual = Depends(requerir_staff),
 ) -> dict:
     try:
         response = (
@@ -693,7 +712,7 @@ def crear_trabajo(
 def actualizar_trabajo(
     trabajo_id: str,
     payload: TrabajoUpdate,
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> dict:
     estado_anterior = None
     try:
@@ -785,7 +804,7 @@ def _clave_actividad(actividad: str | None, tipificacion: str | None, hw_activid
 @app.post("/api/admin/actividades/importar", response_model=ImportarActividadesResultado)
 def importar_actividades(
     archivo: UploadFile = File(...),
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> dict:
     """Importa un CSV con columnas SITE, ACTIVIDAD, TIPIFICACION,
     HW-ACTIVIDAD, QTY, AVANCE. Cada fila se liga al trabajo cuyo site
@@ -952,7 +971,7 @@ def _cantidad_acumulada(actividad_id: str) -> float:
 )
 def listar_actividades_de_trabajo(
     trabajo_id: str,
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> list[dict]:
     """Lista las actividades de un trabajo para el popup de edicion,
     marcando cuales ya tienen avance reportado (esas no se pueden borrar)."""
@@ -1005,7 +1024,7 @@ def listar_actividades_de_trabajo(
 def crear_actividad_de_trabajo(
     trabajo_id: str,
     payload: ActividadCreate,
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> dict:
     _obtener_trabajo_o_404(trabajo_id)
 
@@ -1049,7 +1068,7 @@ def actualizar_actividad_de_trabajo(
     trabajo_id: str,
     actividad_id: str,
     payload: ActividadUpdate,
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> dict:
     _obtener_actividad_del_trabajo_o_404(trabajo_id, actividad_id)
     acumulado = _cantidad_acumulada(actividad_id)
@@ -1104,7 +1123,7 @@ def actualizar_actividad_de_trabajo(
 def eliminar_actividad_de_trabajo(
     trabajo_id: str,
     actividad_id: str,
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> None:
     _obtener_actividad_del_trabajo_o_404(trabajo_id, actividad_id)
 
@@ -1672,7 +1691,7 @@ def _parsear_fecha_query(fecha: str | None, valor_por_defecto: date) -> date:
 @app.get("/api/admin/avances-diarios", response_model=list[AvanceDiarioAdminOut])
 def listar_avances_diarios_admin(
     fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto hoy"),
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> list[dict]:
     """Vista 'Daily' del administrador: por cada trabajo QUE ESTABA
     PROGRAMADO ese dia (tabla programacion), si el lider ya actualizo el
@@ -1686,7 +1705,7 @@ def listar_avances_diarios_admin(
 @app.get("/api/admin/programacion", response_model=list[AvanceDiarioAdminOut])
 def listar_programacion(
     fecha: str | None = Query(default=None, description="YYYY-MM-DD, por defecto manana"),
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> list[dict]:
     """Vista 'Programacion': el coordinador ve todos los trabajos activos
     de una fecha (por defecto manana) para asignarles un lider_cuadrilla
@@ -1712,7 +1731,7 @@ def _validar_fecha_no_pasada(fecha_obj: date) -> None:
 @app.put("/api/admin/programacion", response_model=AvanceDiarioAdminOut)
 def asignar_programacion(
     payload: ProgramacionAsignar,
-    admin: UsuarioActual = Depends(requerir_administrador),
+    admin: UsuarioActual = Depends(requerir_staff),
 ) -> dict:
     """Asigna (o reasigna) el lider_cuadrilla que trabaja un site en una
     fecha dada. Un mismo trabajo+fecha solo tiene un lider: reasignar
@@ -1750,7 +1769,7 @@ def asignar_programacion(
 def quitar_programacion(
     trabajo_id: str,
     fecha: str = Query(..., description="YYYY-MM-DD"),
-    _admin: UsuarioActual = Depends(requerir_administrador),
+    _admin: UsuarioActual = Depends(requerir_staff),
 ) -> None:
     """Quita la asignacion de lider de un trabajo para una fecha dada
     (el site vuelve a quedar 'sin asignar' ese dia). Usado por la vista de

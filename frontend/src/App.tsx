@@ -65,8 +65,23 @@ export default function App() {
     supabase.auth.signOut();
   };
 
+  const esStaff = perfil?.role === "administrador" || perfil?.role === "coordinador";
+
+  // El coordinador ve las mismas pestanas operativas que el administrador
+  // (Trabajos/Programacion/Daily), pero no Perfiles: solo el
+  // administrador gestiona usuarios.
+  const tabsVisibles =
+    perfil?.role === "administrador" ? TABS : TABS.filter((tab) => tab.key !== "perfiles");
+
+  // tabActiva arranca en "perfiles" antes de saber el rol; si el usuario
+  // logueado es coordinador esa pestana no existe para el, asi que se
+  // usa la primera pestana visible como respaldo.
+  const tabEfectiva = tabsVisibles.some((tab) => tab.key === tabActiva)
+    ? tabActiva
+    : tabsVisibles[0]?.key;
+
   const anchoAmplio =
-    perfil?.role === "lider_cuadrilla" || tabActiva === "daily" || tabActiva === "programacion";
+    perfil?.role === "lider_cuadrilla" || tabEfectiva === "daily" || tabEfectiva === "programacion";
 
   if (cargandoSesion) {
     return (
@@ -107,15 +122,15 @@ export default function App() {
         >
           <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <span className="font-semibold text-zinc-50">Gestion de Usuarios</span>
-            {perfil.role === "administrador" && (
+            {esStaff && (
               <nav className="flex gap-4">
-                {TABS.map((tab) => (
+                {tabsVisibles.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setTabActiva(tab.key)}
                     className={
                       "text-sm font-medium pb-1 border-b-2 transition-colors " +
-                      (tabActiva === tab.key
+                      (tabEfectiva === tab.key
                         ? "text-cobre-500 border-cobre-500"
                         : "text-zinc-400 border-transparent hover:text-zinc-200")
                     }
@@ -146,12 +161,12 @@ export default function App() {
           "mx-auto px-4 py-6 sm:py-8 " + (anchoAmplio ? "max-w-7xl" : "max-w-5xl")
         }
       >
-        {perfil.role === "administrador" ? (
+        {esStaff ? (
           <>
-            {tabActiva === "perfiles" && <PerfilesPanel />}
-            {tabActiva === "asignacion" && <AsignacionPanel />}
-            {tabActiva === "programacion" && <ProgramacionPanel />}
-            {tabActiva === "daily" && <DailyPanel />}
+            {tabEfectiva === "perfiles" && perfil.role === "administrador" && <PerfilesPanel />}
+            {tabEfectiva === "asignacion" && <AsignacionPanel />}
+            {tabEfectiva === "programacion" && <ProgramacionPanel />}
+            {tabEfectiva === "daily" && <DailyPanel />}
           </>
         ) : (
           <MisTrabajosPanel />
