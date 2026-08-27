@@ -20,9 +20,13 @@ export function hoyIso(): string {
 type CalendarioProps = {
   fechaSeleccionada: string;
   onSeleccionar: (fecha: string) => void;
+  // Si se pasa, los dias anteriores a esta fecha quedan deshabilitados
+  // (no se pueden seleccionar). Usado por Programacion, que es hacia
+  // adelante: no tiene sentido "programar" un dia que ya paso.
+  fechaMinima?: string;
 };
 
-export function Calendario({ fechaSeleccionada, onSeleccionar }: CalendarioProps) {
+export function Calendario({ fechaSeleccionada, onSeleccionar, fechaMinima }: CalendarioProps) {
   const hoyIsoColombia = hoyIso();
   const fechaSel = new Date(`${fechaSeleccionada}T00:00:00`);
   const [mesVisible, setMesVisible] = useState(
@@ -53,15 +57,28 @@ export function Calendario({ fechaSeleccionada, onSeleccionar }: CalendarioProps
 
   const esSeleccionado = (dia: number) => formatearCelda(dia) === fechaSeleccionada;
 
+  const estaDeshabilitado = (dia: number) => !!fechaMinima && formatearCelda(dia) < fechaMinima;
+
   const cambiarMes = (delta: number) =>
     setMesVisible(new Date(mesVisible.getFullYear(), mesVisible.getMonth() + delta, 1));
+
+  // Si el mes anterior completo queda antes de fechaMinima, no tiene
+  // caso dejar navegar hacia el (todos sus dias saldrian deshabilitados).
+  const ultimoDiaMesAnteriorIso = (() => {
+    const d = new Date(mesVisible.getFullYear(), mesVisible.getMonth(), 0);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  })();
+  const puedeIrMesAnterior = !fechaMinima || ultimoDiaMesAnteriorIso >= fechaMinima;
 
   return (
     <div className="border border-slate-200 rounded-lg p-3">
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => cambiarMes(-1)}
-          className="text-slate-500 hover:text-slate-800 px-2 py-1"
+          disabled={!puedeIrMesAnterior}
+          className="text-slate-500 hover:text-slate-800 disabled:text-slate-300 disabled:cursor-not-allowed px-2 py-1"
           aria-label="Mes anterior"
         >
           ‹
@@ -91,10 +108,15 @@ export function Calendario({ fechaSeleccionada, onSeleccionar }: CalendarioProps
           ) : (
             <button
               key={i}
-              onClick={() => onSeleccionar(formatearCelda(dia))}
+              onClick={() => {
+                if (!estaDeshabilitado(dia)) onSeleccionar(formatearCelda(dia));
+              }}
+              disabled={estaDeshabilitado(dia)}
               className={
                 "h-8 w-8 mx-auto rounded-full text-sm flex items-center justify-center transition-colors " +
-                (esSeleccionado(dia)
+                (estaDeshabilitado(dia)
+                  ? "text-slate-300 cursor-not-allowed"
+                  : esSeleccionado(dia)
                   ? "bg-blue-600 text-white font-semibold"
                   : esHoy(dia)
                   ? "border-2 border-blue-500 text-blue-600 font-semibold"

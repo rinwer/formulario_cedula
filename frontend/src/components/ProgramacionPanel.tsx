@@ -283,22 +283,17 @@ export default function ProgramacionPanel() {
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="w-full lg:w-64 shrink-0">
-          <Calendario fechaSeleccionada={fecha} onSeleccionar={setFecha} />
+          <Calendario fechaSeleccionada={fecha} onSeleccionar={setFecha} fechaMinima={hoyIso()} />
           <p className="text-xs text-slate-400 mt-2">
-            Por defecto muestra el dia siguiente a hoy, para programar el trabajo de manana.
+            Por defecto muestra el dia siguiente a hoy, para programar el trabajo de manana. La
+            Programacion es hacia adelante: para consultar como quedo programado un dia que ya
+            paso, revisa el Daily.
           </p>
         </div>
 
         <div className="flex-1 overflow-x-auto">
           {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
           {errorAsignacion && <p className="text-sm text-red-600 mb-4">{errorAsignacion}</p>}
-
-          {esFechaPasada && (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
-              Este dia ya paso: puedes consultar quien estaba asignado, pero no se puede asignar
-              ni quitar lideres.
-            </p>
-          )}
 
           {!cargando && !error && filas.length === 0 && (
             <p className="text-sm text-slate-500">No hay trabajos activos para programar.</p>
