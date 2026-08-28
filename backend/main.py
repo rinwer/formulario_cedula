@@ -1390,6 +1390,64 @@ def listar_avances_diarios(
     return avances
 
 
+@app.get(
+    "/api/admin/trabajos/{trabajo_id}/avances",
+    response_model=list[AvanceDiarioOut],
+)
+def listar_avances_diarios_de_trabajo(
+    trabajo_id: str,
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> list[dict]:
+    """Historial completo de avances/comentarios de un trabajo (mas
+    recientes primero), para la pestana 'Ver Trabajos': a diferencia de
+    GET /api/mis-trabajos/{id}/avances (uso del lider, exige que este
+    programado HOY para ese trabajo), este endpoint es para
+    administrador/coordinador y no depende de la programacion del dia,
+    ya que aqui se consulta el historial completo de cualquier site."""
+    _obtener_trabajo_o_404(trabajo_id)
+
+    try:
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select("id, trabajo_id, comentario, created_at")
+            .eq("trabajo_id", trabajo_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances.",
+        ) from exc
+
+    avances = avances_resp.data or []
+    if not avances:
+        return []
+
+    avance_ids = [a["id"] for a in avances]
+    try:
+        detalles_resp = (
+            supabase.table("avances_diarios_detalle")
+            .select("avance_diario_id, actividad_id, cantidad")
+            .in_("avance_diario_id", avance_ids)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el detalle de los avances.",
+        ) from exc
+
+    detalles_por_avance: dict[str, list[dict]] = {}
+    for detalle in detalles_resp.data or []:
+        detalles_por_avance.setdefault(detalle["avance_diario_id"], []).append(detalle)
+
+    for avance in avances:
+        avance["detalles"] = detalles_por_avance.get(avance["id"], [])
+
+    return avances
+
+
 def obtener_vista_trabajos_por_fecha(
     fecha_obj: date,
     trabajo_ids_filtro: list[str] | None = None,

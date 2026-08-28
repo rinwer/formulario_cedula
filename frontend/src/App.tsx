@@ -6,17 +6,19 @@ import LoginPage from "./components/LoginPage";
 import MisTrabajosPanel from "./components/MisTrabajosPanel";
 import PerfilesPanel from "./components/PerfilesPanel";
 import ProgramacionPanel from "./components/ProgramacionPanel";
+import VerTrabajosPanel from "./components/VerTrabajosPanel";
 import { fetchAutenticado } from "./lib/api";
 import { supabase } from "./lib/supabaseClient";
 import { Perfil } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
-type Tab = "perfiles" | "asignacion" | "programacion" | "daily";
+type Tab = "perfiles" | "asignacion" | "ver_trabajos" | "programacion" | "daily";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "perfiles", label: "Perfiles" },
   { key: "asignacion", label: "Trabajos" },
+  { key: "ver_trabajos", label: "Ver Trabajos" },
   { key: "programacion", label: "Programacion" },
   { key: "daily", label: "Daily" },
 ];
@@ -93,7 +95,10 @@ export default function App() {
     : tabsVisibles[0]?.key;
 
   const anchoAmplio =
-    perfil?.role === "lider_cuadrilla" || tabEfectiva === "daily" || tabEfectiva === "programacion";
+    perfil?.role === "lider_cuadrilla" ||
+    tabEfectiva === "daily" ||
+    tabEfectiva === "programacion" ||
+    tabEfectiva === "ver_trabajos";
 
   if (cargandoSesion) {
     return (
@@ -179,6 +184,10 @@ export default function App() {
             {tabEfectiva === "asignacion" &&
               (perfil.role === "administrador" || perfil.role === "coordinador") && (
                 <AsignacionPanel />
+              )}
+            {tabEfectiva === "ver_trabajos" &&
+              (perfil.role === "administrador" || perfil.role === "coordinador") && (
+                <VerTrabajosPanel />
               )}
             {tabEfectiva === "programacion" &&
               (perfil.role === "administrador" || perfil.role === "coordinador") && (
