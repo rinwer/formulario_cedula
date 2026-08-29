@@ -24,8 +24,18 @@ export async function fetchAutenticado(input: string, init: RequestInit = {}): P
     !session || (session.expires_at ?? 0) * 1000 - Date.now() < MARGEN_EXPIRACION_MS;
 
   if (expiraPronto) {
-    const { data: refrescada } = await supabase.auth.refreshSession();
-    session = refrescada.session ?? session;
+    const { data: refrescada, error } = await supabase.auth.refreshSession();
+    if (error || !refrescada.session) {
+      // El refresh token tambien esta vencido/invalido: no hay forma de
+      // recuperar la sesion. Si se sigue mandando el access_token viejo,
+      // el backend siempre responde 401 y la app queda trabada en
+      // "Cargando tu perfil..." sin salida. Cerrar sesion aca dispara
+      // onAuthStateChange y la app vuelve sola a la pantalla de login.
+      await supabase.auth.signOut();
+      session = null;
+    } else {
+      session = refrescada.session;
+    }
   }
 
   const headers = new Headers(init.headers);
