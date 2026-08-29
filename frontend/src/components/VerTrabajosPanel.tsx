@@ -232,7 +232,17 @@ export default function VerTrabajosPanel() {
                       const acumulado = acumuladoPorActividad[a.id] ?? 0;
                       const completa = qtyMax !== null && acumulado >= qtyMax;
                       return (
-                        <tr key={a.id} className="border-b border-zinc-800 last:border-0">
+                        <tr
+                          key={a.id}
+                          className={
+                            "border-b border-zinc-800 last:border-0 " +
+                            (completa
+                              ? "bg-emerald-950/50"
+                              : acumulado === 0
+                              ? "bg-amber-950/50"
+                              : "")
+                          }
+                        >
                           <td className="py-2 pr-4 text-zinc-200">{a.actividad ?? "—"}</td>
                           <td className="py-2 pr-4 text-zinc-200">{a.tipificacion ?? "—"}</td>
                           <td className="py-2 pr-4 text-zinc-200">{a.hw_actividad ?? "—"}</td>
@@ -240,7 +250,7 @@ export default function VerTrabajosPanel() {
                           <td className="py-2 pr-4 text-zinc-200">{a.avance ?? "—"}</td>
                           <td className="py-2 pr-4">
                             {acumulado === 0 ? (
-                              <span className="text-zinc-500">—</span>
+                              <span className="text-sm font-semibold text-amber-400">Sin avance</span>
                             ) : (
                               <span
                                 className={
