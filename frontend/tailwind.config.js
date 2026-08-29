@@ -4,21 +4,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Acento cobre de la identidad "Grafito y cobre": reemplaza al
-        // azul generico en botones, enlaces, pestana activa y focus
-        // rings, sobre un fondo grafito (zinc) en toda la app.
+        // Acento de la identidad "Claro neutro": un taupe/cobre atenuado
+        // (no el cobre vivo original) sobre un fondo claro en toda la
+        // app. Se mantiene el nombre "cobre" para no tener que renombrar
+        // clases en cada componente.
         cobre: {
-          50: "#FDF6F0",
-          100: "#F7E4D2",
-          200: "#EFCBA8",
-          300: "#E4A874",
-          400: "#D0813F",
-          500: "#BD6B2E",
-          600: "#B5602A",
-          700: "#954E20",
-          800: "#7A3F1B",
-          900: "#603116",
-          950: "#3D1E0D",
+          50: "#FAF7F4",
+          100: "#F1EAE3",
+          200: "#E1D2C4",
+          300: "#CDB29C",
+          400: "#B08F72",
+          500: "#9C7A5F",
+          600: "#8C6E58",
+          700: "#755A47",
+          800: "#5F4838",
+          900: "#4A382C",
+          950: "#2E231B",
         },
       },
     },

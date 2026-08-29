@@ -19,9 +19,9 @@ const ESTADO_LABEL: Record<EstadoTrabajo, string> = {
 };
 
 const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
-  asignado: "bg-emerald-950 text-emerald-400",
-  finalizado: "bg-zinc-700 text-zinc-300",
-  standby: "bg-amber-950 text-amber-400",
+  asignado: "bg-emerald-100 text-emerald-700",
+  finalizado: "bg-slate-200 text-slate-600",
+  standby: "bg-amber-100 text-amber-700",
 };
 
 type InfoTooltipProps = {
@@ -47,8 +47,8 @@ function InfoTooltip({ texto, variante = "info", label }: InfoTooltipProps) {
 
   const colores =
     variante === "advertencia"
-      ? "text-amber-400 bg-amber-950 border-amber-800"
-      : "text-zinc-300 bg-zinc-800 border-zinc-600";
+      ? "text-amber-700 bg-amber-50 border-amber-200"
+      : "text-slate-600 bg-white border-slate-200";
 
   return (
     <div className="relative inline-block" ref={contenedorRef}>
@@ -56,7 +56,7 @@ function InfoTooltip({ texto, variante = "info", label }: InfoTooltipProps) {
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-label={label}
-        className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-zinc-300 text-[10px] font-bold hover:bg-zinc-600"
+        className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold hover:bg-slate-300"
       >
         i
       </button>
@@ -71,7 +71,7 @@ function InfoTooltip({ texto, variante = "info", label }: InfoTooltipProps) {
             type="button"
             onClick={() => setAbierto(false)}
             aria-label="Cerrar"
-            className="absolute top-1 right-1.5 text-zinc-500 hover:text-zinc-300 leading-none"
+            className="absolute top-1 right-1.5 text-slate-400 hover:text-slate-600 leading-none"
           >
             ✕
           </button>
@@ -452,12 +452,12 @@ export default function AsignacionPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-zinc-800 rounded-xl shadow-md p-5 sm:p-8">
-        <h2 className="text-lg font-semibold text-zinc-50 mb-6">Nuevo trabajo</h2>
+      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
+        <h2 className="text-lg font-semibold text-slate-800 mb-6">Nuevo trabajo</h2>
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
           <div>
-            <label htmlFor="id_smp" className="block text-sm font-medium text-zinc-300 mb-1">
+            <label htmlFor="id_smp" className="block text-sm font-medium text-slate-700 mb-1">
               ID / SMP
             </label>
             <input
@@ -465,14 +465,14 @@ export default function AsignacionPanel() {
               type="text"
               value={idSmp}
               onChange={(e) => setIdSmp(e.target.value)}
-              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
               placeholder="Ej: SMP-00123"
             />
-            {errores.idSmp && <p className="text-sm text-red-400 mt-1">{errores.idSmp}</p>}
+            {errores.idSmp && <p className="text-sm text-red-600 mt-1">{errores.idSmp}</p>}
           </div>
 
           <div>
-            <label htmlFor="site" className="block text-sm font-medium text-zinc-300 mb-1">
+            <label htmlFor="site" className="block text-sm font-medium text-slate-700 mb-1">
               Site
             </label>
             <input
@@ -480,17 +480,17 @@ export default function AsignacionPanel() {
               type="text"
               value={site}
               onChange={(e) => setSite(e.target.value)}
-              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
               placeholder="Ej: BOG-0045"
             />
-            {errores.site && <p className="text-sm text-red-400 mt-1">{errores.site}</p>}
-            <p className="text-xs text-zinc-500 mt-1">
+            {errores.site && <p className="text-sm text-red-600 mt-1">{errores.site}</p>}
+            <p className="text-xs text-slate-400 mt-1">
               Debe coincidir con la columna SITE del CSV de actividades.
             </p>
           </div>
 
           <div>
-            <label htmlFor="zona" className="block text-sm font-medium text-zinc-300 mb-1">
+            <label htmlFor="zona" className="block text-sm font-medium text-slate-700 mb-1">
               Zona
             </label>
             <input
@@ -498,10 +498,10 @@ export default function AsignacionPanel() {
               type="text"
               value={zona}
               onChange={(e) => setZona(e.target.value)}
-              className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
               placeholder="Ej: Norte"
             />
-            {errores.zona && <p className="text-sm text-red-400 mt-1">{errores.zona}</p>}
+            {errores.zona && <p className="text-sm text-red-600 mt-1">{errores.zona}</p>}
           </div>
 
           <div className="sm:col-span-2">
@@ -515,9 +515,9 @@ export default function AsignacionPanel() {
           </div>
         </form>
 
-        <div className="mt-6 pt-6 border-t border-zinc-700">
+        <div className="mt-6 pt-6 border-t border-slate-200">
           <div className="flex items-center gap-1.5 mb-3">
-            <h3 className="text-sm font-semibold text-zinc-50">Cargar actividades (CSV)</h3>
+            <h3 className="text-sm font-semibold text-slate-800">Cargar actividades (CSV)</h3>
             <InfoTooltip
               variante="advertencia"
               label="Ayuda: cuando se puede cargar el CSV"
@@ -547,33 +547,33 @@ export default function AsignacionPanel() {
             type="button"
             onClick={dispararSelectorArchivo}
             disabled={subiendoCsv}
-            className="text-sm text-white bg-cobre-600 hover:bg-cobre-500 disabled:bg-cobre-900 font-medium px-4 py-2 rounded-md transition-colors"
+            className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 font-medium px-4 py-2 rounded-md transition-colors"
           >
             {subiendoCsv ? "Cargando..." : "Seleccionar archivo"}
           </button>
         </div>
       </div>
 
-      <div className="bg-zinc-800 rounded-xl shadow-md p-5 sm:p-8">
+      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-zinc-50">Trabajos</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Trabajos</h2>
           <button
             onClick={cargarTrabajos}
             disabled={cargandoLista}
-            className="text-sm text-cobre-500 hover:text-cobre-300 disabled:text-zinc-600 font-medium"
+            className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium"
           >
             {cargandoLista ? "Actualizando..." : "Actualizar"}
           </button>
         </div>
 
-        {errorLista && <p className="text-sm text-red-400 mb-4">{errorLista}</p>}
+        {errorLista && <p className="text-sm text-red-600 mb-4">{errorLista}</p>}
 
         {!errorLista && trabajos.length === 0 && !cargandoLista && (
-          <p className="text-sm text-zinc-400">Todavia no hay trabajos creados.</p>
+          <p className="text-sm text-slate-500">Todavia no hay trabajos creados.</p>
         )}
 
         {trabajos.length > 0 && (
-          <p className="text-xs text-zinc-500 mb-3">
+          <p className="text-xs text-slate-400 mb-3">
             Un trabajo en <strong>Finalizado</strong> o <strong>Standby</strong> deja de aparecer en
             la bandeja del lider de cuadrilla.
           </p>
@@ -583,7 +583,7 @@ export default function AsignacionPanel() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-zinc-700 text-zinc-400">
+                <tr className="border-b border-slate-200 text-slate-500">
                   <th className="py-2 pr-4 font-medium">ID / SMP</th>
                   <th className="py-2 pr-4 font-medium">Site</th>
                   <th className="py-2 pr-4 font-medium">Zona</th>
@@ -595,39 +595,39 @@ export default function AsignacionPanel() {
                 {trabajos.map((trabajo) => {
                   const editando = idEditando === trabajo.id;
                   return (
-                    <tr key={trabajo.id} className="border-b border-zinc-800 last:border-0 align-top">
-                      <td className="py-2 pr-4 text-zinc-200">
+                    <tr key={trabajo.id} className="border-b border-slate-100 last:border-0 align-top">
+                      <td className="py-2 pr-4 text-slate-700">
                         {editando ? (
                           <input
                             type="text"
                             value={idSmpEditado}
                             onChange={(e) => setIdSmpEditado(e.target.value)}
-                            className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                             autoFocus
                           />
                         ) : (
                           trabajo.id_smp
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-zinc-200">
+                      <td className="py-2 pr-4 text-slate-700">
                         {editando ? (
                           <input
                             type="text"
                             value={siteEditado}
                             onChange={(e) => setSiteEditado(e.target.value)}
-                            className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                           />
                         ) : (
                           trabajo.site
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-zinc-200">
+                      <td className="py-2 pr-4 text-slate-700">
                         {editando ? (
                           <input
                             type="text"
                             value={zonaEditada}
                             onChange={(e) => setZonaEditada(e.target.value)}
-                            className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                           />
                         ) : (
                           trabajo.zona
@@ -638,7 +638,7 @@ export default function AsignacionPanel() {
                           <select
                             value={estadoEditado}
                             onChange={(e) => setEstadoEditado(e.target.value as EstadoTrabajo)}
-                            className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                           >
                             <option value="asignado">Asignado</option>
                             <option value="finalizado">Finalizado</option>
@@ -659,7 +659,7 @@ export default function AsignacionPanel() {
                         {editando ? (
                           <div className="flex flex-col items-end gap-2">
                             {errorEdicion && (
-                              <p className="text-xs text-red-400 max-w-[200px] text-right">
+                              <p className="text-xs text-red-600 max-w-[200px] text-right">
                                 {errorEdicion}
                               </p>
                             )}
@@ -672,14 +672,14 @@ export default function AsignacionPanel() {
                                   !siteEditado.trim() ||
                                   !zonaEditada.trim()
                                 }
-                                className="text-sm text-white bg-cobre-600 hover:bg-cobre-500 disabled:bg-cobre-900 px-3 py-1 rounded-md"
+                                className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 px-3 py-1 rounded-md"
                               >
                                 {guardandoEdicion ? "Guardando..." : "Guardar"}
                               </button>
                               <button
                                 onClick={cancelarEdicion}
                                 disabled={guardandoEdicion}
-                                className="text-sm text-zinc-300 hover:text-white px-3 py-1 rounded-md"
+                                className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md"
                               >
                                 Cancelar
                               </button>
@@ -695,14 +695,14 @@ export default function AsignacionPanel() {
                             </button>
                             <button
                               onClick={() => abrirActividades(trabajo)}
-                              className="text-sm text-zinc-300 hover:text-white font-medium px-3 py-1"
+                              className="text-sm text-slate-600 hover:text-slate-800 font-medium px-3 py-1"
                             >
                               Actividades
                             </button>
                             <button
                               onClick={dispararSelectorArchivo}
                               disabled={subiendoCsv}
-                              className="text-sm text-zinc-300 hover:text-white disabled:text-zinc-600 font-medium px-3 py-1"
+                              className="text-sm text-slate-600 hover:text-slate-800 disabled:text-slate-400 font-medium px-3 py-1"
                             >
                               Cargar CSV
                             </button>
@@ -720,35 +720,35 @@ export default function AsignacionPanel() {
 
       {trabajoActividades && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-20">
-          <div className="bg-zinc-800 rounded-lg shadow-lg max-w-3xl w-full p-5 sm:p-6 max-h-[85vh] overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-lg max-w-3xl w-full p-5 sm:p-6 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-semibold text-zinc-50">
+              <h3 className="text-lg font-semibold text-slate-800">
                 Actividades de {trabajoActividades.site}
               </h3>
               <button
                 onClick={cerrarActividades}
                 aria-label="Cerrar"
-                className="text-zinc-500 hover:text-zinc-300 text-lg leading-none"
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
               >
                 ✕
               </button>
             </div>
-            <p className="text-xs text-zinc-500 mb-4">
+            <p className="text-xs text-slate-400 mb-4">
               Las actividades con avance reportado no se pueden eliminar, para no perder el
               historial del lider de cuadrilla.
             </p>
 
             {errorActividades && (
-              <p className="text-sm text-red-400 mb-3">{errorActividades}</p>
+              <p className="text-sm text-red-600 mb-3">{errorActividades}</p>
             )}
 
             {cargandoActividades ? (
-              <p className="text-sm text-zinc-400">Cargando...</p>
+              <p className="text-sm text-slate-500">Cargando...</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm mb-4">
                   <thead>
-                    <tr className="border-b border-zinc-700 text-zinc-400">
+                    <tr className="border-b border-slate-200 text-slate-500">
                       <th className="py-2 pr-3 font-medium">Actividad</th>
                       <th className="py-2 pr-3 font-medium">Tipificacion</th>
                       <th className="py-2 pr-3 font-medium">HW-Actividad</th>
@@ -760,7 +760,7 @@ export default function AsignacionPanel() {
                   <tbody>
                     {actividades.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-3 text-zinc-400">
+                        <td colSpan={6} className="py-3 text-slate-500">
                           Este trabajo todavia no tiene actividades.
                         </td>
                       </tr>
@@ -768,7 +768,7 @@ export default function AsignacionPanel() {
                     {actividades.map((act) => {
                       const editando = actividadEditandoId === act.id;
                       return (
-                        <tr key={act.id} className="border-b border-zinc-800 last:border-0 align-top">
+                        <tr key={act.id} className="border-b border-slate-100 last:border-0 align-top">
                           <td className="py-2 pr-3">
                             {editando ? (
                               <input
@@ -777,7 +777,7 @@ export default function AsignacionPanel() {
                                 onChange={(e) =>
                                   setActividadEditada((prev) => ({ ...prev, actividad: e.target.value }))
                                 }
-                                className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                                 autoFocus
                               />
                             ) : (
@@ -795,7 +795,7 @@ export default function AsignacionPanel() {
                                     tipificacion: e.target.value,
                                   }))
                                 }
-                                className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                               />
                             ) : (
                               act.tipificacion ?? "—"
@@ -812,7 +812,7 @@ export default function AsignacionPanel() {
                                     hw_actividad: e.target.value,
                                   }))
                                 }
-                                className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                               />
                             ) : (
                               act.hw_actividad ?? "—"
@@ -826,7 +826,7 @@ export default function AsignacionPanel() {
                                 onChange={(e) =>
                                   setActividadEditada((prev) => ({ ...prev, qty: e.target.value }))
                                 }
-                                className="w-20 rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                                className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                               />
                             ) : (
                               act.qty ?? "—"
@@ -840,7 +840,7 @@ export default function AsignacionPanel() {
                                 onChange={(e) =>
                                   setActividadEditada((prev) => ({ ...prev, avance: e.target.value }))
                                 }
-                                className="w-20 rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                                className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
                               />
                             ) : (
                               act.avance ?? "—"
@@ -852,14 +852,14 @@ export default function AsignacionPanel() {
                                 <button
                                   onClick={() => guardarEdicionActividad(act.id)}
                                   disabled={guardandoActividad || !actividadEditada.actividad.trim()}
-                                  className="text-sm text-white bg-cobre-600 hover:bg-cobre-500 disabled:bg-cobre-900 px-3 py-1 rounded-md"
+                                  className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 px-3 py-1 rounded-md"
                                 >
                                   {guardandoActividad ? "Guardando..." : "Guardar"}
                                 </button>
                                 <button
                                   onClick={cancelarEdicionActividad}
                                   disabled={guardandoActividad}
-                                  className="text-sm text-zinc-300 hover:text-white px-3 py-1 rounded-md"
+                                  className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md"
                                 >
                                   Cancelar
                                 </button>
@@ -880,7 +880,7 @@ export default function AsignacionPanel() {
                                       ? "Ya tiene avance reportado, no se puede eliminar"
                                       : undefined
                                   }
-                                  className="text-sm text-red-500 hover:text-red-300 disabled:text-zinc-600 font-medium px-2 py-1"
+                                  className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium px-2 py-1"
                                 >
                                   {eliminandoActividadId === act.id ? "..." : "Eliminar"}
                                 </button>
@@ -895,49 +895,49 @@ export default function AsignacionPanel() {
               </div>
             )}
 
-            <div className="pt-4 border-t border-zinc-700">
-              <h4 className="text-sm font-semibold text-zinc-50 mb-3">Agregar actividad</h4>
+            <div className="pt-4 border-t border-slate-200">
+              <h4 className="text-sm font-semibold text-slate-800 mb-3">Agregar actividad</h4>
               <div className="grid gap-2 sm:grid-cols-5">
                 <input
                   type="text"
                   value={nuevaActividad}
                   onChange={(e) => setNuevaActividad(e.target.value)}
                   placeholder="Actividad"
-                  className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                 />
                 <input
                   type="text"
                   value={nuevaTipificacion}
                   onChange={(e) => setNuevaTipificacion(e.target.value)}
                   placeholder="Tipificacion"
-                  className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                 />
                 <input
                   type="text"
                   value={nuevaHw}
                   onChange={(e) => setNuevaHw(e.target.value)}
                   placeholder="HW-Actividad"
-                  className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                 />
                 <input
                   type="text"
                   value={nuevoQty}
                   onChange={(e) => setNuevoQty(e.target.value)}
                   placeholder="Qty"
-                  className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                 />
                 <input
                   type="text"
                   value={nuevoAvance}
                   onChange={(e) => setNuevoAvance(e.target.value)}
                   placeholder="Avance"
-                  className="rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                 />
               </div>
               <button
                 onClick={crearActividad}
                 disabled={creandoActividad || !nuevaActividad.trim()}
-                className="mt-3 text-sm text-white bg-cobre-600 hover:bg-cobre-500 disabled:bg-cobre-900 font-medium px-4 py-2 rounded-md transition-colors"
+                className="mt-3 text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 font-medium px-4 py-2 rounded-md transition-colors"
               >
                 {creandoActividad ? "Agregando..." : "Agregar"}
               </button>
@@ -948,7 +948,7 @@ export default function AsignacionPanel() {
 
       {popup.visible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-zinc-800 rounded-lg shadow-lg max-w-sm w-full p-6 text-center">
+          <div className="bg-white rounded-lg shadow-lg max-w-sm w-full p-6 text-center">
             <div
               className={
                 "mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full text-white " +
@@ -957,13 +957,13 @@ export default function AsignacionPanel() {
             >
               {popup.type === "success" ? "✓" : "✕"}
             </div>
-            <h3 className="text-lg font-semibold text-zinc-50 mb-1">
+            <h3 className="text-lg font-semibold text-slate-800 mb-1">
               {popup.type === "success" ? "Guardado con exito" : "Error"}
             </h3>
-            <p className="text-sm text-zinc-300 mb-5">{popup.message}</p>
+            <p className="text-sm text-slate-600 mb-5">{popup.message}</p>
             <button
               onClick={cerrarPopup}
-              className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-md text-sm"
+              className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-md text-sm"
             >
               Aceptar
             </button>

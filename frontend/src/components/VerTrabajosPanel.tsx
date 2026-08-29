@@ -11,9 +11,9 @@ const ESTADO_LABEL: Record<EstadoTrabajo, string> = {
 };
 
 const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
-  asignado: "bg-emerald-950 text-emerald-400",
-  finalizado: "bg-zinc-700 text-zinc-300",
-  standby: "bg-amber-950 text-amber-400",
+  asignado: "bg-emerald-100 text-emerald-700",
+  finalizado: "bg-slate-200 text-slate-600",
+  standby: "bg-amber-100 text-amber-700",
 };
 
 function qtyNumerico(qty: string | null): number | null {
@@ -141,14 +141,14 @@ export default function VerTrabajosPanel() {
   const comentarios = avances.filter((a) => a.comentario);
 
   return (
-    <div className="bg-zinc-800 rounded-xl shadow-md p-5 sm:p-8">
-      <h1 className="text-lg font-semibold text-zinc-50 mb-1">Ver Trabajos</h1>
-      <p className="text-sm text-zinc-400 mb-6">
+    <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
+      <h1 className="text-lg font-semibold text-slate-800 mb-1">Ver Trabajos</h1>
+      <p className="text-sm text-slate-500 mb-6">
         Busca un site para ver todas sus actividades cargadas por CSV y el historial de
         comentarios que ha dejado el lider de cuadrilla.
       </p>
 
-      {errorTrabajos && <p className="text-sm text-red-400 mb-4">{errorTrabajos}</p>}
+      {errorTrabajos && <p className="text-sm text-red-600 mb-4">{errorTrabajos}</p>}
 
       <div className="relative max-w-md mb-6">
         <input
@@ -160,30 +160,30 @@ export default function VerTrabajosPanel() {
           }}
           placeholder={cargandoTrabajos ? "Cargando sites..." : "Buscar site por nombre..."}
           disabled={cargandoTrabajos}
-          className="w-full rounded-md border border-zinc-600 bg-zinc-900 text-zinc-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
         />
         {busqueda && (
           <button
             type="button"
             onClick={limpiarSeleccion}
             aria-label="Limpiar busqueda"
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
           >
             ✕
           </button>
         )}
 
         {coincidencias.length > 0 && (
-          <ul className="absolute z-10 mt-1 w-full rounded-md border border-zinc-600 bg-zinc-900 shadow-lg max-h-60 overflow-y-auto">
+          <ul className="absolute z-10 mt-1 w-full rounded-md border border-slate-300 bg-white shadow-lg max-h-60 overflow-y-auto">
             {coincidencias.map((t) => (
               <li key={t.id}>
                 <button
                   type="button"
                   onClick={() => seleccionarTrabajo(t)}
-                  className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+                  className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
                 >
                   <span className="font-medium">{t.site}</span>{" "}
-                  <span className="text-zinc-500">— {t.zona}</span>
+                  <span className="text-slate-400">— {t.zona}</span>
                 </button>
               </li>
             ))}
@@ -193,9 +193,9 @@ export default function VerTrabajosPanel() {
 
       {trabajoSeleccionado && (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center gap-3 pb-4 border-b border-zinc-700">
-            <h2 className="text-base font-semibold text-zinc-50">{trabajoSeleccionado.site}</h2>
-            <span className="text-sm text-zinc-400">{trabajoSeleccionado.zona}</span>
+          <div className="flex flex-wrap items-center gap-3 pb-4 border-b border-slate-200">
+            <h2 className="text-base font-semibold text-slate-800">{trabajoSeleccionado.site}</h2>
+            <span className="text-sm text-slate-500">{trabajoSeleccionado.zona}</span>
             <span
               className={
                 "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
@@ -207,17 +207,17 @@ export default function VerTrabajosPanel() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-zinc-200 mb-3">Actividades (CSV)</h3>
-            {errorActividades && <p className="text-sm text-red-400 mb-3">{errorActividades}</p>}
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Actividades (CSV)</h3>
+            {errorActividades && <p className="text-sm text-red-600 mb-3">{errorActividades}</p>}
             {cargandoActividades ? (
-              <p className="text-sm text-zinc-400">Cargando...</p>
+              <p className="text-sm text-slate-500">Cargando...</p>
             ) : actividades.length === 0 ? (
-              <p className="text-sm text-zinc-400">Este trabajo todavia no tiene actividades.</p>
+              <p className="text-sm text-slate-500">Este trabajo todavia no tiene actividades.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
-                    <tr className="border-b border-zinc-700 text-zinc-400">
+                    <tr className="border-b border-slate-200 text-slate-500">
                       <th className="py-2 pr-4 font-medium">Actividad</th>
                       <th className="py-2 pr-4 font-medium">Tipificacion</th>
                       <th className="py-2 pr-4 font-medium">HW-Actividad</th>
@@ -235,27 +235,27 @@ export default function VerTrabajosPanel() {
                         <tr
                           key={a.id}
                           className={
-                            "border-b border-zinc-800 last:border-0 " +
+                            "border-b border-slate-100 last:border-0 " +
                             (completa
-                              ? "bg-emerald-950/50"
+                              ? "bg-emerald-50"
                               : acumulado === 0
-                              ? "bg-amber-950/50"
+                              ? "bg-amber-50"
                               : "")
                           }
                         >
-                          <td className="py-2 pr-4 text-zinc-200">{a.actividad ?? "—"}</td>
-                          <td className="py-2 pr-4 text-zinc-200">{a.tipificacion ?? "—"}</td>
-                          <td className="py-2 pr-4 text-zinc-200">{a.hw_actividad ?? "—"}</td>
-                          <td className="py-2 pr-4 text-zinc-200">{a.qty ?? "—"}</td>
-                          <td className="py-2 pr-4 text-zinc-200">{a.avance ?? "—"}</td>
+                          <td className="py-2 pr-4 text-slate-700">{a.actividad ?? "—"}</td>
+                          <td className="py-2 pr-4 text-slate-700">{a.tipificacion ?? "—"}</td>
+                          <td className="py-2 pr-4 text-slate-700">{a.hw_actividad ?? "—"}</td>
+                          <td className="py-2 pr-4 text-slate-700">{a.qty ?? "—"}</td>
+                          <td className="py-2 pr-4 text-slate-700">{a.avance ?? "—"}</td>
                           <td className="py-2 pr-4">
                             {acumulado === 0 ? (
-                              <span className="text-sm font-semibold text-amber-400">Sin avance</span>
+                              <span className="text-sm font-semibold text-amber-700">Sin avance</span>
                             ) : (
                               <span
                                 className={
                                   "text-xs font-semibold " +
-                                  (completa ? "text-emerald-400" : "text-zinc-200")
+                                  (completa ? "text-emerald-700" : "text-slate-700")
                                 }
                               >
                                 {qtyMax !== null ? `${acumulado} / ${qtyMax}` : acumulado}
@@ -273,22 +273,22 @@ export default function VerTrabajosPanel() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-zinc-200 mb-3">Comentarios</h3>
-            {errorAvances && <p className="text-sm text-red-400 mb-3">{errorAvances}</p>}
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Comentarios</h3>
+            {errorAvances && <p className="text-sm text-red-600 mb-3">{errorAvances}</p>}
             {cargandoAvances ? (
-              <p className="text-sm text-zinc-400">Cargando...</p>
+              <p className="text-sm text-slate-500">Cargando...</p>
             ) : comentarios.length === 0 ? (
-              <p className="text-sm text-zinc-400">Todavia no hay comentarios registrados.</p>
+              <p className="text-sm text-slate-500">Todavia no hay comentarios registrados.</p>
             ) : (
               <ul className="space-y-3">
                 {comentarios.map((avance) => (
-                  <li key={avance.id} className="border-b border-zinc-800 pb-3 last:border-0">
-                    <span className="text-sm font-medium text-zinc-200">
+                  <li key={avance.id} className="border-b border-slate-100 pb-3 last:border-0">
+                    <span className="text-sm font-medium text-slate-700">
                       {formatearFecha(avance.created_at)}
                     </span>
-                    <p className="text-sm text-zinc-300 mt-0.5">{avance.comentario}</p>
+                    <p className="text-sm text-slate-600 mt-0.5">{avance.comentario}</p>
                     {avance.detalles.length > 0 && (
-                      <p className="mt-0.5 text-xs text-zinc-500">
+                      <p className="mt-0.5 text-xs text-slate-500">
                         {avance.detalles
                           .map(
                             (d) => `${hwActividadPorId[d.actividad_id] ?? d.actividad_id}: ${d.cantidad}`

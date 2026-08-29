@@ -73,29 +73,29 @@ export function Calendario({ fechaSeleccionada, onSeleccionar, fechaMinima }: Ca
   const puedeIrMesAnterior = !fechaMinima || ultimoDiaMesAnteriorIso >= fechaMinima;
 
   return (
-    <div className="border border-zinc-700 rounded-lg p-3">
+    <div className="border border-slate-200 rounded-lg p-3">
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => cambiarMes(-1)}
           disabled={!puedeIrMesAnterior}
-          className="text-zinc-400 hover:text-zinc-100 disabled:text-zinc-600 disabled:cursor-not-allowed px-2 py-1"
+          className="text-slate-500 hover:text-slate-800 disabled:text-slate-300 disabled:cursor-not-allowed px-2 py-1"
           aria-label="Mes anterior"
         >
           ‹
         </button>
-        <span className="text-sm font-semibold text-zinc-200 capitalize">
+        <span className="text-sm font-semibold text-slate-700 capitalize">
           {mesVisible.toLocaleDateString("es-CO", { month: "long", year: "numeric" })}
         </span>
         <button
           onClick={() => cambiarMes(1)}
-          className="text-zinc-400 hover:text-zinc-100 px-2 py-1"
+          className="text-slate-500 hover:text-slate-800 px-2 py-1"
           aria-label="Mes siguiente"
         >
           ›
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center text-xs text-zinc-500 mb-1">
+      <div className="grid grid-cols-7 gap-1 text-center text-xs text-slate-400 mb-1">
         {DIAS_SEMANA.map((d, i) => (
           <span key={i}>{d}</span>
         ))}
@@ -115,12 +115,12 @@ export function Calendario({ fechaSeleccionada, onSeleccionar, fechaMinima }: Ca
               className={
                 "h-8 w-8 mx-auto rounded-full text-sm flex items-center justify-center transition-colors " +
                 (estaDeshabilitado(dia)
-                  ? "text-zinc-600 cursor-not-allowed"
+                  ? "text-slate-300 cursor-not-allowed"
                   : esSeleccionado(dia)
                   ? "bg-cobre-600 text-white font-semibold"
                   : esHoy(dia)
-                  ? "border-2 border-cobre-500 text-cobre-400 font-semibold"
-                  : "text-zinc-300 hover:bg-zinc-700")
+                  ? "border-2 border-cobre-500 text-cobre-600 font-semibold"
+                  : "text-slate-700 hover:bg-slate-100")
               }
             >
               {dia}
@@ -131,7 +131,7 @@ export function Calendario({ fechaSeleccionada, onSeleccionar, fechaMinima }: Ca
 
       <button
         onClick={() => onSeleccionar(hoyIso())}
-        className="mt-3 text-xs text-cobre-500 hover:text-cobre-300 font-medium"
+        className="mt-3 text-xs text-cobre-600 hover:text-cobre-800 font-medium"
       >
         Ir a hoy
       </button>
