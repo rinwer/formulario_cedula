@@ -138,7 +138,7 @@ export default function App() {
           }
         >
           <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-            <span className="font-semibold text-zinc-50">Gestion de Usuarios</span>
+            <span className="font-semibold text-zinc-50">Seguimiento</span>
             {esStaff && (
               <nav className="flex gap-4">
                 {tabsVisibles.map((tab) => (
