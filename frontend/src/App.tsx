@@ -30,16 +30,34 @@ export default function App() {
   const [tabActiva, setTabActiva] = useState<Tab>("perfiles");
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    let resuelto = false;
+    const finalizarCarga = (nuevaSesion: Session | null) => {
+      if (resuelto) return;
+      resuelto = true;
+      setSession(nuevaSesion);
       setCargandoSesion(false);
-    });
+    };
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => finalizarCarga(data.session))
+      .catch(() => finalizarCarga(null));
+
+    // supabase-js usa un lock del navegador para sincronizar refrescos de
+    // sesion entre pestanas; si una pestana vieja se quedo con ese lock
+    // (comun en movil o con varias pestanas abiertas), getSession() puede
+    // quedarse esperando para siempre y la pantalla de "Cargando..."
+    // nunca avanza. Este limite evita que la app se quede trabada.
+    const timeoutId = setTimeout(() => finalizarCarga(null), 8000);
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, nuevaSesion) => {
       setSession(nuevaSesion);
     });
 
-    return () => authListener.subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
