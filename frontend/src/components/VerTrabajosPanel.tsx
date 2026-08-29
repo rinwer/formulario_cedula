@@ -16,6 +16,12 @@ const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
   standby: "bg-amber-950 text-amber-400",
 };
 
+function qtyNumerico(qty: string | null): number | null {
+  if (qty === null || qty.trim() === "") return null;
+  const valor = Number(qty);
+  return Number.isFinite(valor) ? valor : null;
+}
+
 function formatearFecha(iso: string): string {
   try {
     return new Date(iso).toLocaleString("es-CO", {
@@ -122,6 +128,16 @@ export default function VerTrabajosPanel() {
     hwActividadPorId[a.id] = a.hw_actividad ?? a.actividad ?? "(sin nombre)";
   });
 
+  // La columna "Avance" del CSV es el valor crudo importado (casi
+  // siempre vacio); lo que realmente importa es cuanto ha reportado el
+  // lider dia a dia, que se calcula sumando avances_diarios_detalle.
+  const acumuladoPorActividad: Record<string, number> = {};
+  avances.forEach((avance) => {
+    avance.detalles.forEach((d) => {
+      acumuladoPorActividad[d.actividad_id] = (acumuladoPorActividad[d.actividad_id] ?? 0) + d.cantidad;
+    });
+  });
+
   const comentarios = avances.filter((a) => a.comentario);
 
   return (
@@ -207,18 +223,39 @@ export default function VerTrabajosPanel() {
                       <th className="py-2 pr-4 font-medium">HW-Actividad</th>
                       <th className="py-2 pr-4 font-medium">Qty</th>
                       <th className="py-2 pr-4 font-medium">Avance</th>
+                      <th className="py-2 pr-4 font-medium">Reportado</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {actividades.map((a) => (
-                      <tr key={a.id} className="border-b border-zinc-800 last:border-0">
-                        <td className="py-2 pr-4 text-zinc-200">{a.actividad ?? "—"}</td>
-                        <td className="py-2 pr-4 text-zinc-200">{a.tipificacion ?? "—"}</td>
-                        <td className="py-2 pr-4 text-zinc-200">{a.hw_actividad ?? "—"}</td>
-                        <td className="py-2 pr-4 text-zinc-200">{a.qty ?? "—"}</td>
-                        <td className="py-2 pr-4 text-zinc-200">{a.avance ?? "—"}</td>
-                      </tr>
-                    ))}
+                    {actividades.map((a) => {
+                      const qtyMax = qtyNumerico(a.qty);
+                      const acumulado = acumuladoPorActividad[a.id] ?? 0;
+                      const completa = qtyMax !== null && acumulado >= qtyMax;
+                      return (
+                        <tr key={a.id} className="border-b border-zinc-800 last:border-0">
+                          <td className="py-2 pr-4 text-zinc-200">{a.actividad ?? "—"}</td>
+                          <td className="py-2 pr-4 text-zinc-200">{a.tipificacion ?? "—"}</td>
+                          <td className="py-2 pr-4 text-zinc-200">{a.hw_actividad ?? "—"}</td>
+                          <td className="py-2 pr-4 text-zinc-200">{a.qty ?? "—"}</td>
+                          <td className="py-2 pr-4 text-zinc-200">{a.avance ?? "—"}</td>
+                          <td className="py-2 pr-4">
+                            {acumulado === 0 ? (
+                              <span className="text-zinc-500">—</span>
+                            ) : (
+                              <span
+                                className={
+                                  "text-xs font-semibold " +
+                                  (completa ? "text-emerald-400" : "text-zinc-200")
+                                }
+                              >
+                                {qtyMax !== null ? `${acumulado} / ${qtyMax}` : acumulado}
+                                {completa && " ✓"}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
