@@ -2,6 +2,7 @@ import { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import AsignacionPanel from "./components/AsignacionPanel";
 import DailyPanel from "./components/DailyPanel";
+import DashboardPanel from "./components/DashboardPanel";
 import LoginPage from "./components/LoginPage";
 import MisTrabajosPanel from "./components/MisTrabajosPanel";
 import PerfilesPanel from "./components/PerfilesPanel";
@@ -13,7 +14,7 @@ import { Perfil } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
-type Tab = "perfiles" | "asignacion" | "ver_trabajos" | "programacion" | "daily";
+type Tab = "perfiles" | "asignacion" | "ver_trabajos" | "programacion" | "daily" | "dashboard";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "perfiles", label: "Perfiles" },
@@ -21,6 +22,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "ver_trabajos", label: "Ver Trabajos" },
   { key: "programacion", label: "Programacion" },
   { key: "daily", label: "Daily" },
+  { key: "dashboard", label: "Dashboard" },
 ];
 
 export default function App() {
@@ -116,7 +118,8 @@ export default function App() {
     perfil?.role === "lider_cuadrilla" ||
     tabEfectiva === "daily" ||
     tabEfectiva === "programacion" ||
-    tabEfectiva === "ver_trabajos";
+    tabEfectiva === "ver_trabajos" ||
+    tabEfectiva === "dashboard";
 
   if (cargandoSesion) {
     return (
@@ -212,6 +215,10 @@ export default function App() {
                 <ProgramacionPanel />
               )}
             {tabEfectiva === "daily" && <DailyPanel />}
+            {tabEfectiva === "dashboard" &&
+              (perfil.role === "administrador" || perfil.role === "coordinador") && (
+                <DashboardPanel />
+              )}
           </>
         ) : (
           <MisTrabajosPanel />
