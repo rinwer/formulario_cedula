@@ -1456,9 +1456,9 @@ def obtener_vista_trabajos_por_fecha(
 ) -> list[dict]:
     """Arma la vista de trabajos para una fecha (usada tanto por Daily
     como por Programacion): por cada trabajo activo, quien esta
-    programado ese dia (tabla programacion), si ya actualizo el avance,
-    cuanto reporto, que comentario dejo y el % de avance acumulado a esa
-    fecha.
+    programado ese dia (tabla programacion, o si no hay fila ahi, quien
+    reporto avance ese dia), si ya actualizo el avance, cuanto reporto,
+    que comentario dejo y el % de avance acumulado a esa fecha.
 
     solo_programados=True (usado por Daily) descarta los trabajos que no
     tienen a nadie programado ese dia en la tabla programacion: si el
@@ -1562,6 +1562,37 @@ def obtener_vista_trabajos_por_fecha(
 
     activo_ids = [t["id"] for t in activos]
 
+    # Avances hasta el final del dia consultado, en una sola consulta: el
+    # "avance del dia" es el subconjunto con created_at >= inicio, y el
+    # total (incluyendo dias anteriores) es el que se usa para calcular
+    # el % de avance acumulado. Se trae ANTES de saber quien esta
+    # programado porque avances_diarios.lider_id tambien sirve de
+    # respaldo para identificar al lider en fechas sin fila en
+    # programacion (ver mas abajo): la tabla programacion es mas nueva
+    # que avances_diarios, asi que dias viejos pueden tener avance
+    # reportado sin tener programacion.
+    try:
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select("id, trabajo_id, lider_id, comentario, created_at")
+            .in_("trabajo_id", activo_ids)
+            .lt("created_at", fin.isoformat())
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances del dia.",
+        ) from exc
+
+    avances_hasta_fecha = avances_resp.data or []
+    avances_del_dia = [
+        a for a in avances_hasta_fecha if _parsear_timestamptz(a["created_at"]) >= inicio
+    ]
+    avance_ids_del_dia = {a["id"] for a in avances_del_dia}
+    avance_ids_hasta_fecha = [a["id"] for a in avances_hasta_fecha]
+
     # Quien esta programado (tabla programacion) para cada trabajo en
     # esta fecha especifica -- es la fuente de verdad del lider del dia,
     # no trabajos.lider_id (que ya no se llena desde la pestana Trabajos).
@@ -1591,13 +1622,45 @@ def obtener_vista_trabajos_por_fecha(
         if perfil_lider:
             perfiles_lideres[fila_programacion["lider_id"]] = perfil_lider
 
+    # Respaldo: sites que reportaron avance ese dia pero no tienen fila en
+    # programacion para esa fecha (tipicamente historial de antes de que
+    # existiera la pestana Programacion). Sin este respaldo el Daily de un
+    # dia viejo mostraba el lider en blanco aunque el avance si supiera
+    # quien lo reporto.
+    for avance in avances_del_dia:
+        if avance["trabajo_id"] not in lider_id_por_trabajo:
+            lider_id_por_trabajo[avance["trabajo_id"]] = avance["lider_id"]
+
+    # Los perfiles de los lideres de respaldo no vienen incrustados (solo
+    # los de programacion_resp si), asi que se completan con una consulta
+    # aparte solo para los que falten.
+    lider_ids_sin_perfil = [
+        lider_id for lider_id in lider_id_por_trabajo.values() if lider_id not in perfiles_lideres
+    ]
+    if lider_ids_sin_perfil:
+        try:
+            perfiles_resp = (
+                supabase.table("profiles")
+                .select("id, nombre_completo, email, activo")
+                .in_("id", lider_ids_sin_perfil)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener los perfiles de los lideres.",
+            ) from exc
+        for perfil in perfiles_resp.data or []:
+            perfiles_lideres[perfil["id"]] = perfil
+
     # "Dias en el sitio" = desde cuando el lider ACTUAL de cada trabajo
-    # quedo programado ahi por primera vez (no desde que existe el
-    # trabajo): si se reasigna a otro lider, el contador debe reiniciar
-    # para el nuevo. Se trae todo el historial de programacion hasta la
-    # fecha consultada (no solo esa fecha) y se calcula en memoria la
-    # primera fecha por combinacion trabajo+lider, para no hacer una
-    # consulta por trabajo.
+    # empezo a figurar ahi por primera vez -- programado, o (a falta de
+    # eso) reportando avance -- para que un dia viejo sin fila en
+    # programacion no le reste antiguedad al lider. Si se reasigna a otro
+    # lider, el contador se reinicia para el nuevo. Se combina el
+    # historial de programacion con el de avances_diarios (ya disponible
+    # arriba), tomando la fecha mas temprana entre ambas fuentes por
+    # combinacion trabajo+lider.
     try:
         historial_programacion_resp = (
             supabase.table("programacion")
@@ -1619,6 +1682,12 @@ def obtener_vista_trabajos_por_fecha(
         actual = primera_fecha_por_trabajo_lider.get(clave)
         if actual is None or fecha_fila < actual:
             primera_fecha_por_trabajo_lider[clave] = fecha_fila
+    for avance in avances_hasta_fecha:
+        clave = (avance["trabajo_id"], avance["lider_id"])
+        fecha_avance = _parsear_timestamptz(avance["created_at"]).astimezone(ZONA_COLOMBIA).date()
+        actual = primera_fecha_por_trabajo_lider.get(clave)
+        if actual is None or fecha_avance < actual:
+            primera_fecha_por_trabajo_lider[clave] = fecha_avance
 
     # "El lider esta actualmente deshabilitado" es un estado del
     # PRESENTE: no debe borrar el historial de un dia pasado en el que
@@ -1639,37 +1708,6 @@ def obtener_vista_trabajos_por_fecha(
 
     if not trabajos:
         return []
-
-    trabajo_ids = [t["id"] for t in trabajos]
-
-    # Avances hasta el final del dia consultado, en una sola consulta: el
-    # "avance del dia" es el subconjunto con created_at >= inicio, y el
-    # total (incluyendo dias anteriores) es el que se usa para calcular
-    # el % de avance acumulado. Antes esto eran 2 consultas a
-    # avances_diarios (una acotada al dia, otra "< fin" para el
-    # acumulado) y 2 a avances_diarios_detalle; como la segunda siempre
-    # incluye a la primera, se piden ambas de una sola vez y se separan
-    # en memoria.
-    try:
-        avances_resp = (
-            supabase.table("avances_diarios")
-            .select("id, trabajo_id, comentario, created_at")
-            .in_("trabajo_id", trabajo_ids)
-            .lt("created_at", fin.isoformat())
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener los avances del dia.",
-        ) from exc
-
-    avances_hasta_fecha = avances_resp.data or []
-    avances_del_dia = [
-        a for a in avances_hasta_fecha if _parsear_timestamptz(a["created_at"]) >= inicio
-    ]
-    avance_ids_del_dia = {a["id"] for a in avances_del_dia}
-    avance_ids_hasta_fecha = [a["id"] for a in avances_hasta_fecha]
 
     detalles_por_avance: dict[str, list[dict]] = {}
     acumulado_por_actividad: dict[str, int] = {}
