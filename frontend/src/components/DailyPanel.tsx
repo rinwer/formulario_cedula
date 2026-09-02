@@ -41,6 +41,15 @@ export default function DailyPanel() {
     year: "numeric",
   });
 
+  const pendientes = filas.filter((fila) => !fila.actualizado).length;
+
+  // Sin actualizar primero para que salten a la vista de inmediato; el
+  // orden por site que ya trae el backend se conserva dentro de cada grupo.
+  const filasOrdenadas = [...filas].sort((a, b) => {
+    if (a.actualizado === b.actualizado) return 0;
+    return a.actualizado ? 1 : -1;
+  });
+
   return (
     <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
       <div className="flex items-center justify-between mb-1">
@@ -67,6 +76,21 @@ export default function DailyPanel() {
             <p className="text-sm text-slate-500">No hay trabajos asignados.</p>
           )}
 
+          {!cargando && filas.length > 0 && (
+            <div
+              className={
+                "flex items-center gap-2 rounded-lg px-3 py-2 mb-4 text-sm font-medium " +
+                (pendientes > 0
+                  ? "bg-amber-50 text-amber-800 border border-amber-200"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200")
+              }
+            >
+              {pendientes > 0
+                ? `${pendientes} de ${filas.length} sites sin actualizar hoy`
+                : `Todos los sites (${filas.length}) actualizaron hoy`}
+            </div>
+          )}
+
           {filas.length > 0 && (
             <table className="w-full text-left text-sm">
               <thead>
@@ -80,10 +104,13 @@ export default function DailyPanel() {
                 </tr>
               </thead>
               <tbody>
-                {filas.map((fila) => (
+                {filasOrdenadas.map((fila) => (
                   <tr
                     key={fila.trabajo_id}
-                    className="border-b border-slate-100 last:border-0 align-top"
+                    className={
+                      "border-b border-slate-100 last:border-0 align-top " +
+                      (!fila.actualizado ? "bg-amber-50/60" : "")
+                    }
                   >
                     <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
                     <td className="py-2 pr-4 text-slate-700">
