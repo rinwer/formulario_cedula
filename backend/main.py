@@ -366,6 +366,14 @@ class AvanceDiarioAdminOut(BaseModel):
     dias_en_sitio: int | None = None
 
 
+class LineaTiempoItem(BaseModel):
+    fecha: str
+    trabajo_id: str
+    site: str
+    zona: str
+    lider_id: str
+
+
 class ProgramacionAsignar(BaseModel):
     trabajo_id: str
     lider_id: str
@@ -1823,6 +1831,98 @@ def obtener_vista_trabajos_por_fecha(
     return resultado
 
 
+def obtener_linea_tiempo(desde: date, hasta: date) -> list[dict]:
+    """Para cada dia del rango [desde, hasta], que site tenia asignado
+    cada lider: mismo criterio que el Daily/Programacion (fila en
+    programacion para ese trabajo+dia, o si no hay, el lider que reporto
+    avance ese dia). A diferencia de obtener_vista_trabajos_por_fecha, no
+    reconstruye el estado vigente del trabajo dia a dia ni resuelve
+    perfiles completos: es una vista historica de solo lectura, mas
+    liviana, pensada para pintar un Gantt con varios dias a la vez."""
+    inicio = datetime.combine(desde, datetime.min.time(), tzinfo=ZONA_COLOMBIA)
+    fin = datetime.combine(hasta, datetime.min.time(), tzinfo=ZONA_COLOMBIA) + timedelta(days=1)
+
+    try:
+        programacion_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id, lider_id, fecha")
+            .gte("fecha", desde.isoformat())
+            .lte("fecha", hasta.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la programacion del rango.",
+        ) from exc
+
+    lider_por_trabajo_y_fecha: dict[tuple[str, str], str] = {}
+    trabajo_ids: set[str] = set()
+    for fila in programacion_resp.data or []:
+        lider_por_trabajo_y_fecha[(fila["trabajo_id"], fila["fecha"])] = fila["lider_id"]
+        trabajo_ids.add(fila["trabajo_id"])
+
+    try:
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select("trabajo_id, lider_id, created_at")
+            .gte("created_at", inicio.isoformat())
+            .lt("created_at", fin.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances del rango.",
+        ) from exc
+
+    # Respaldo, igual que en obtener_vista_trabajos_por_fecha: si no hay
+    # fila de programacion para ese trabajo+dia, se usa quien reporto
+    # avance ese dia.
+    for fila in avances_resp.data or []:
+        fecha_avance = (
+            _parsear_timestamptz(fila["created_at"]).astimezone(ZONA_COLOMBIA).date().isoformat()
+        )
+        clave = (fila["trabajo_id"], fecha_avance)
+        if clave not in lider_por_trabajo_y_fecha:
+            lider_por_trabajo_y_fecha[clave] = fila["lider_id"]
+        trabajo_ids.add(fila["trabajo_id"])
+
+    if not trabajo_ids:
+        return []
+
+    try:
+        trabajos_resp = (
+            supabase.table("trabajos")
+            .select("id, site, zona")
+            .in_("id", list(trabajo_ids))
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los sites.",
+        ) from exc
+
+    trabajo_por_id = {t["id"]: t for t in trabajos_resp.data or []}
+
+    resultado = []
+    for (trabajo_id, fecha), lider_id in lider_por_trabajo_y_fecha.items():
+        trabajo = trabajo_por_id.get(trabajo_id)
+        if not trabajo:
+            continue
+        resultado.append(
+            {
+                "fecha": fecha,
+                "trabajo_id": trabajo_id,
+                "site": trabajo["site"],
+                "zona": trabajo["zona"],
+                "lider_id": lider_id,
+            }
+        )
+    return resultado
+
+
 def _parsear_fecha_query(fecha: str | None, valor_por_defecto: date) -> date:
     if not fecha:
         return valor_por_defecto
@@ -1861,6 +1961,38 @@ def listar_programacion(
     manana = datetime.now(ZONA_COLOMBIA).date() + timedelta(days=1)
     fecha_obj = _parsear_fecha_query(fecha, manana)
     return obtener_vista_trabajos_por_fecha(fecha_obj)
+
+
+@app.get("/api/admin/linea-tiempo", response_model=list[LineaTiempoItem])
+def listar_linea_tiempo(
+    desde: str = Query(..., description="YYYY-MM-DD"),
+    hasta: str = Query(..., description="YYYY-MM-DD"),
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> list[dict]:
+    """Vista historica de solo lectura para el Gantt: por cada dia del
+    rango, en que site estuvo cada lider."""
+    try:
+        desde_obj = date.fromisoformat(desde)
+        hasta_obj = date.fromisoformat(hasta)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+    if hasta_obj < desde_obj:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="'hasta' no puede ser anterior a 'desde'.",
+        )
+
+    if (hasta_obj - desde_obj).days > 62:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El rango maximo es de 62 dias.",
+        )
+
+    return obtener_linea_tiempo(desde_obj, hasta_obj)
 
 
 def _validar_fecha_no_pasada(fecha_obj: date) -> None:

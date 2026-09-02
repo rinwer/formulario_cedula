@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import AsignacionPanel from "./components/AsignacionPanel";
 import DailyPanel from "./components/DailyPanel";
 import DashboardPanel from "./components/DashboardPanel";
+import GanttPanel from "./components/GanttPanel";
 import LoginPage from "./components/LoginPage";
 import MisTrabajosPanel from "./components/MisTrabajosPanel";
 import PerfilesPanel from "./components/PerfilesPanel";
@@ -14,7 +15,14 @@ import { Perfil } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
-type Tab = "perfiles" | "asignacion" | "ver_trabajos" | "programacion" | "daily" | "dashboard";
+type Tab =
+  | "perfiles"
+  | "asignacion"
+  | "ver_trabajos"
+  | "programacion"
+  | "daily"
+  | "dashboard"
+  | "gantt";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "perfiles", label: "Perfiles" },
@@ -23,6 +31,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "programacion", label: "Programacion" },
   { key: "daily", label: "Daily" },
   { key: "dashboard", label: "Dashboard" },
+  { key: "gantt", label: "Gantt" },
 ];
 
 export default function App() {
@@ -119,7 +128,8 @@ export default function App() {
     tabEfectiva === "daily" ||
     tabEfectiva === "programacion" ||
     tabEfectiva === "ver_trabajos" ||
-    tabEfectiva === "dashboard";
+    tabEfectiva === "dashboard" ||
+    tabEfectiva === "gantt";
 
   if (cargandoSesion) {
     return (
@@ -218,6 +228,10 @@ export default function App() {
             {tabEfectiva === "dashboard" &&
               (perfil.role === "administrador" || perfil.role === "coordinador") && (
                 <DashboardPanel />
+              )}
+            {tabEfectiva === "gantt" &&
+              (perfil.role === "administrador" || perfil.role === "coordinador") && (
+                <GanttPanel />
               )}
           </>
         ) : (

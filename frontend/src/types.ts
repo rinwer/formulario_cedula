@@ -78,3 +78,11 @@ export type AvanceDiarioAdmin = {
   porcentaje_avance: number | null;
   dias_en_sitio: number | null;
 };
+
+export type LineaTiempoItem = {
+  fecha: string;
+  trabajo_id: string;
+  site: string;
+  zona: string;
+  lider_id: string;
+};
