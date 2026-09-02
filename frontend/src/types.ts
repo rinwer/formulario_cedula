@@ -76,4 +76,5 @@ export type AvanceDiarioAdmin = {
   comentarios: string[];
   detalle: AvanceResumenDetalle[];
   porcentaje_avance: number | null;
+  dias_en_sitio: number | null;
 };

@@ -363,6 +363,7 @@ class AvanceDiarioAdminOut(BaseModel):
     comentarios: list[str] = []
     detalle: list[AvanceResumenDetalle] = []
     porcentaje_avance: int | None = None
+    dias_en_sitio: int | None = None
 
 
 class ProgramacionAsignar(BaseModel):
@@ -1590,6 +1591,35 @@ def obtener_vista_trabajos_por_fecha(
         if perfil_lider:
             perfiles_lideres[fila_programacion["lider_id"]] = perfil_lider
 
+    # "Dias en el sitio" = desde cuando el lider ACTUAL de cada trabajo
+    # quedo programado ahi por primera vez (no desde que existe el
+    # trabajo): si se reasigna a otro lider, el contador debe reiniciar
+    # para el nuevo. Se trae todo el historial de programacion hasta la
+    # fecha consultada (no solo esa fecha) y se calcula en memoria la
+    # primera fecha por combinacion trabajo+lider, para no hacer una
+    # consulta por trabajo.
+    try:
+        historial_programacion_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id, lider_id, fecha")
+            .in_("trabajo_id", activo_ids)
+            .lte("fecha", fecha_obj.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el historial de programacion.",
+        ) from exc
+
+    primera_fecha_por_trabajo_lider: dict[tuple[str, str], date] = {}
+    for fila_historial_prog in historial_programacion_resp.data or []:
+        clave = (fila_historial_prog["trabajo_id"], fila_historial_prog["lider_id"])
+        fecha_fila = date.fromisoformat(fila_historial_prog["fecha"])
+        actual = primera_fecha_por_trabajo_lider.get(clave)
+        if actual is None or fecha_fila < actual:
+            primera_fecha_por_trabajo_lider[clave] = fecha_fila
+
     # "El lider esta actualmente deshabilitado" es un estado del
     # PRESENTE: no debe borrar el historial de un dia pasado en el que
     # el lider si estaba habilitado y reporto avance. Por eso ese filtro
@@ -1728,19 +1758,27 @@ def obtener_vista_trabajos_por_fecha(
 
         porcentaje_avance = round((acumulado_total / qty_total) * 100) if qty_total > 0 else None
 
+        lider_id = trabajo.get("_lider_id")
+        dias_en_sitio = None
+        if lider_id:
+            primera_fecha = primera_fecha_por_trabajo_lider.get((trabajo["id"], lider_id))
+            if primera_fecha:
+                dias_en_sitio = (fecha_obj - primera_fecha).days + 1
+
         resultado.append(
             {
                 "trabajo_id": trabajo["id"],
                 "id_smp": trabajo["id_smp"],
                 "site": trabajo["site"],
                 "zona": trabajo["zona"],
-                "lider_id": trabajo.get("_lider_id"),
+                "lider_id": lider_id,
                 "lider_nombre": lider_perfil.get("nombre_completo"),
                 "lider_email": lider_perfil.get("email"),
                 "actualizado": len(avances_trabajo) > 0,
                 "comentarios": comentarios,
                 "detalle": detalle_resumen,
                 "porcentaje_avance": porcentaje_avance,
+                "dias_en_sitio": dias_en_sitio,
             }
         )
 

@@ -96,16 +96,14 @@ export default function DashboardPanel() {
   });
   const zonas = Object.keys(filasPorZona).sort((a, b) => a.localeCompare(b));
 
-  // Agrupado por lider: solo los sites que si tienen a alguien programado
-  // ese dia (sin eso no hay a quien darle seguimiento).
-  const filasPorLider: Record<string, AvanceDiarioAdmin[]> = {};
-  filasConLider.forEach((f) => {
-    (filasPorLider[f.lider_id as string] ??= []).push(f);
-  });
-  const liderIds = Object.keys(filasPorLider).sort((a, b) => {
-    const nombreA = filasPorLider[a][0].lider_nombre ?? filasPorLider[a][0].lider_email ?? "";
-    const nombreB = filasPorLider[b][0].lider_nombre ?? filasPorLider[b][0].lider_email ?? "";
-    return nombreA.localeCompare(nombreB);
+  // Una fila por site (no agregado por lider): la mayoria de lideres solo
+  // tiene un site asignado por dia, asi que el promedio agregado ocultaba
+  // el nombre del site. Ordenado por lider y luego por site.
+  const filasLiderOrdenadas = [...filasConLider].sort((a, b) => {
+    const nombreA = a.lider_nombre ?? a.lider_email ?? "";
+    const nombreB = b.lider_nombre ?? b.lider_email ?? "";
+    const cmpNombre = nombreA.localeCompare(nombreB);
+    return cmpNombre !== 0 ? cmpNombre : a.site.localeCompare(b.site);
   });
 
   return (
@@ -202,56 +200,57 @@ export default function DashboardPanel() {
 
               <div>
                 <h2 className="text-sm font-semibold text-slate-700 mb-3">Avance por lider</h2>
-                {liderIds.length === 0 ? (
+                {filasLiderOrdenadas.length === 0 ? (
                   <p className="text-sm text-slate-500">Nadie tiene sites programados esta fecha.</p>
                 ) : (
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-slate-500">
                         <th className="py-2 pr-4 font-medium">Lider</th>
-                        <th className="py-2 pr-4 font-medium">Sites</th>
-                        <th className="py-2 pr-4 font-medium">Promedio</th>
-                        <th className="py-2 pr-4 font-medium">Sin actualizar</th>
+                        <th className="py-2 pr-4 font-medium">Site</th>
+                        <th className="py-2 pr-4 font-medium">Dias en el sitio</th>
+                        <th className="py-2 pr-4 font-medium">% Avance</th>
+                        <th className="py-2 pr-4 font-medium">Actualizo</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {liderIds.map((liderId) => {
-                        const filasLider = filasPorLider[liderId];
-                        const stats = calcularStats(filasLider);
-                        const sinActualizarLider = filasLider.filter((f) => !f.actualizado).length;
-                        const nombre = filasLider[0].lider_nombre ?? filasLider[0].lider_email ?? "—";
-                        return (
-                          <tr key={liderId} className="border-b border-slate-100 last:border-0">
-                            <td className="py-2 pr-4 text-slate-700">{nombre}</td>
-                            <td className="py-2 pr-4 text-slate-700">{stats.cantidad}</td>
-                            <td className="py-2 pr-4">
-                              {stats.promedio === null ? (
-                                <span className="text-slate-400">—</span>
-                              ) : (
-                                <span
-                                  className={
-                                    "text-xs font-semibold " +
-                                    (stats.promedio >= 100 ? "text-emerald-600" : "text-slate-600")
-                                  }
-                                >
-                                  {stats.promedio}%
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2 pr-4">
-                              {sinActualizarLider > 0 ? (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-                                  {sinActualizarLider}
-                                </span>
-                              ) : (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-                                  0
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {filasLiderOrdenadas.map((fila) => (
+                        <tr key={fila.trabajo_id} className="border-b border-slate-100 last:border-0">
+                          <td className="py-2 pr-4 text-slate-700">
+                            {fila.lider_nombre ?? fila.lider_email ?? "—"}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
+                          <td className="py-2 pr-4 text-slate-700">
+                            {fila.dias_en_sitio === null ? "—" : `${fila.dias_en_sitio} dia${fila.dias_en_sitio === 1 ? "" : "s"}`}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {fila.porcentaje_avance === null ? (
+                              <span className="text-slate-400">—</span>
+                            ) : (
+                              <span
+                                className={
+                                  "text-xs font-semibold " +
+                                  (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
+                                }
+                              >
+                                {fila.porcentaje_avance}%
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <span
+                              className={
+                                "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                                (fila.actualizado
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-amber-100 text-amber-700")
+                              }
+                            >
+                              {fila.actualizado ? "Actualizado" : "Sin actualizar"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 )}
