@@ -45,6 +45,40 @@ function listaDeDias(desde: string, hasta: string): string[] {
   return dias;
 }
 
+type SegmentoGantt =
+  | { tipo: "site"; site: string; zona: string; span: number }
+  | { tipo: "vacio" };
+
+// Convierte los dias sueltos de un lider en tramos: dias consecutivos con
+// el mismo site se fusionan en un solo segmento (con su ancho en dias),
+// para que la fila se vea como barras de Gantt en vez de una celda por
+// dia repitiendo el mismo nombre.
+function segmentarFila(
+  dias: string[],
+  sitePorFecha: Record<string, { site: string; zona: string }> | undefined
+): SegmentoGantt[] {
+  const segmentos: SegmentoGantt[] = [];
+  let i = 0;
+  while (i < dias.length) {
+    const celda = sitePorFecha?.[dias[i]];
+    if (!celda) {
+      segmentos.push({ tipo: "vacio" });
+      i += 1;
+      continue;
+    }
+    let span = 1;
+    while (
+      i + span < dias.length &&
+      sitePorFecha?.[dias[i + span]]?.site === celda.site
+    ) {
+      span += 1;
+    }
+    segmentos.push({ tipo: "site", site: celda.site, zona: celda.zona, span });
+    i += span;
+  }
+  return segmentos;
+}
+
 export default function GanttPanel() {
   const [hastaFecha, setHastaFecha] = useState(hoyIso());
   const desdeFecha = sumarDias(hastaFecha, -(VENTANA_DIAS - 1));
@@ -191,26 +225,29 @@ export default function GanttPanel() {
                   <td className="sticky left-0 bg-white py-1.5 pr-4 text-slate-700 font-medium whitespace-nowrap">
                     {nombrePorLiderId[liderId] ?? liderId}
                   </td>
-                  {dias.map((diaIso) => {
-                    const celda = sitePorLiderYFecha[liderId]?.[diaIso];
-                    return (
-                      <td key={diaIso} className="p-0.5 text-center align-middle">
-                        {celda ? (
-                          <div
-                            title={`${celda.site} (${celda.zona})`}
-                            className={
-                              "h-7 rounded text-[9px] leading-7 font-medium truncate px-0.5 " +
-                              colorSite(celda.site)
-                            }
-                          >
-                            {celda.site}
-                          </div>
-                        ) : (
-                          <div className="h-7" />
-                        )}
+                  {segmentarFila(dias, sitePorLiderYFecha[liderId]).map((segmento, idx) =>
+                    segmento.tipo === "site" ? (
+                      <td
+                        key={idx}
+                        colSpan={segmento.span}
+                        className="p-0.5 text-center align-middle"
+                      >
+                        <div
+                          title={`${segmento.site} (${segmento.zona})`}
+                          className={
+                            "h-7 rounded text-[10px] font-medium truncate px-1 flex items-center justify-center " +
+                            colorSite(segmento.site)
+                          }
+                        >
+                          {segmento.site}
+                        </div>
                       </td>
-                    );
-                  })}
+                    ) : (
+                      <td key={idx} className="p-0.5 text-center align-middle">
+                        <div className="h-7" />
+                      </td>
+                    )
+                  )}
                 </tr>
               ))}
             </tbody>
