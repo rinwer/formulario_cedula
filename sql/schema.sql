@@ -329,7 +329,51 @@ create trigger set_programacion_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------
--- 8. Bootstrap del primer administrador (ejecutar una sola vez)
+-- 8. Tabla disponibilidad (dias en que un lider no trabaja)
+-- ---------------------------------------------------------
+-- Marca que un lider_cuadrilla no esta disponible en una fecha dada
+-- (vacaciones, incapacidad, etc), sin asignarle ningun site. Separada de
+-- "programacion" porque esa tabla exige un trabajo_id (siempre es "este
+-- lider trabaja este site"); aqui no hay site involucrado. El
+-- coordinador no deberia poder tener a la vez una fila aqui y una fila
+-- en programacion para el mismo lider+fecha (se valida en el backend),
+-- pero no se fuerza con una constraint cruzada entre tablas.
+
+create table if not exists public.disponibilidad (
+  id uuid primary key default gen_random_uuid(),
+  lider_id uuid not null references public.profiles (id) on delete cascade,
+  fecha date not null,
+  motivo text,
+  registrado_por uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.disponibilidad is 'Dias en que un lider_cuadrilla no esta disponible para trabajar (no se le asigna ningun site).';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'disponibilidad_lider_fecha_key'
+  ) then
+    alter table public.disponibilidad
+      add constraint disponibilidad_lider_fecha_key unique (lider_id, fecha);
+  end if;
+end $$;
+
+create index if not exists idx_disponibilidad_lider_id on public.disponibilidad (lider_id);
+create index if not exists idx_disponibilidad_fecha on public.disponibilidad (fecha);
+
+alter table public.disponibilidad enable row level security;
+
+drop trigger if exists set_disponibilidad_updated_at on public.disponibilidad;
+
+create trigger set_disponibilidad_updated_at
+  before update on public.disponibilidad
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------
+-- 9. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------
 -- No hay registro publico, asi que el primer administrador se crea a
 -- mano desde el Supabase Dashboard > Authentication > Users > Add user.

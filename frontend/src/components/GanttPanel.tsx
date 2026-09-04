@@ -45,35 +45,48 @@ function listaDeDias(desde: string, hasta: string): string[] {
   return dias;
 }
 
+type CeldaGantt =
+  | { tipo: "site"; site: string; zona: string }
+  | { tipo: "no_disponible" };
+
 type SegmentoGantt =
   | { tipo: "site"; site: string; zona: string; span: number }
+  | { tipo: "no_disponible"; span: number }
   | { tipo: "vacio" };
 
 // Convierte los dias sueltos de un lider en tramos: dias consecutivos con
-// el mismo site se fusionan en un solo segmento (con su ancho en dias),
-// para que la fila se vea como barras de Gantt en vez de una celda por
-// dia repitiendo el mismo nombre.
+// el mismo site (o consecutivos marcados como no disponible) se fusionan
+// en un solo segmento (con su ancho en dias), para que la fila se vea
+// como barras de Gantt en vez de una celda por dia repitiendo lo mismo.
 function segmentarFila(
   dias: string[],
-  sitePorFecha: Record<string, { site: string; zona: string }> | undefined
+  celdaPorFecha: Record<string, CeldaGantt> | undefined
 ): SegmentoGantt[] {
   const segmentos: SegmentoGantt[] = [];
   let i = 0;
   while (i < dias.length) {
-    const celda = sitePorFecha?.[dias[i]];
+    const celda = celdaPorFecha?.[dias[i]];
     if (!celda) {
       segmentos.push({ tipo: "vacio" });
       i += 1;
       continue;
     }
     let span = 1;
-    while (
-      i + span < dias.length &&
-      sitePorFecha?.[dias[i + span]]?.site === celda.site
-    ) {
-      span += 1;
+    if (celda.tipo === "site") {
+      while (
+        i + span < dias.length &&
+        celdaPorFecha?.[dias[i + span]]?.tipo === "site" &&
+        (celdaPorFecha?.[dias[i + span]] as { site: string }).site === celda.site
+      ) {
+        span += 1;
+      }
+      segmentos.push({ tipo: "site", site: celda.site, zona: celda.zona, span });
+    } else {
+      while (i + span < dias.length && celdaPorFecha?.[dias[i + span]]?.tipo === "no_disponible") {
+        span += 1;
+      }
+      segmentos.push({ tipo: "no_disponible", span });
     }
-    segmentos.push({ tipo: "site", site: celda.site, zona: celda.zona, span });
     i += span;
   }
   return segmentos;
@@ -126,15 +139,16 @@ export default function GanttPanel() {
     nombrePorLiderId[l.id] = l.nombre_completo || l.email;
   });
 
-  // fecha+lider -> site, para pintar cada celda de la cuadricula.
-  const sitePorLiderYFecha: Record<string, Record<string, { site: string; zona: string }>> = {};
+  // fecha+lider -> celda (site o no disponible), para pintar cada celda
+  // de la cuadricula.
+  const celdaPorLiderYFecha: Record<string, Record<string, CeldaGantt>> = {};
   const liderIds = new Set<string>();
   items.forEach((item) => {
     liderIds.add(item.lider_id);
-    (sitePorLiderYFecha[item.lider_id] ??= {})[item.fecha] = {
-      site: item.site,
-      zona: item.zona,
-    };
+    (celdaPorLiderYFecha[item.lider_id] ??= {})[item.fecha] =
+      item.tipo === "no_disponible"
+        ? { tipo: "no_disponible" }
+        : { tipo: "site", site: item.site!, zona: item.zona! };
   });
 
   const liderIdsOrdenados = Array.from(liderIds).sort((a, b) => {
@@ -225,29 +239,48 @@ export default function GanttPanel() {
                   <td className="sticky left-0 bg-white py-1.5 pr-4 text-slate-700 font-medium whitespace-nowrap">
                     {nombrePorLiderId[liderId] ?? liderId}
                   </td>
-                  {segmentarFila(dias, sitePorLiderYFecha[liderId]).map((segmento, idx) =>
-                    segmento.tipo === "site" ? (
-                      <td
-                        key={idx}
-                        colSpan={segmento.span}
-                        className="p-0.5 text-center align-middle"
-                      >
-                        <div
-                          title={`${segmento.site} (${segmento.zona})`}
-                          className={
-                            "h-7 rounded text-[10px] font-medium truncate px-1 flex items-center justify-center " +
-                            colorSite(segmento.site)
-                          }
+                  {segmentarFila(dias, celdaPorLiderYFecha[liderId]).map((segmento, idx) => {
+                    if (segmento.tipo === "site") {
+                      return (
+                        <td
+                          key={idx}
+                          colSpan={segmento.span}
+                          className="p-0.5 text-center align-middle"
                         >
-                          {segmento.site}
-                        </div>
-                      </td>
-                    ) : (
+                          <div
+                            title={`${segmento.site} (${segmento.zona})`}
+                            className={
+                              "h-7 rounded text-[10px] font-medium truncate px-1 flex items-center justify-center " +
+                              colorSite(segmento.site)
+                            }
+                          >
+                            {segmento.site}
+                          </div>
+                        </td>
+                      );
+                    }
+                    if (segmento.tipo === "no_disponible") {
+                      return (
+                        <td
+                          key={idx}
+                          colSpan={segmento.span}
+                          className="p-0.5 text-center align-middle"
+                        >
+                          <div
+                            title="No disponible"
+                            className="h-7 rounded text-[10px] font-medium truncate px-1 flex items-center justify-center bg-slate-200 text-slate-500"
+                          >
+                            No disponible
+                          </div>
+                        </td>
+                      );
+                    }
+                    return (
                       <td key={idx} className="p-0.5 text-center align-middle">
                         <div className="h-7" />
                       </td>
-                    )
-                  )}
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

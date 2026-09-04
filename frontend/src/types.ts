@@ -81,8 +81,9 @@ export type AvanceDiarioAdmin = {
 
 export type LineaTiempoItem = {
   fecha: string;
-  trabajo_id: string;
-  site: string;
-  zona: string;
   lider_id: string;
+  tipo: "site" | "no_disponible";
+  trabajo_id: string | null;
+  site: string | null;
+  zona: string | null;
 };

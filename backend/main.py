@@ -368,14 +368,29 @@ class AvanceDiarioAdminOut(BaseModel):
 
 class LineaTiempoItem(BaseModel):
     fecha: str
-    trabajo_id: str
-    site: str
-    zona: str
     lider_id: str
+    tipo: str = "site"
+    trabajo_id: str | None = None
+    site: str | None = None
+    zona: str | None = None
 
 
 class ProgramacionAsignar(BaseModel):
     trabajo_id: str
+    lider_id: str
+    fecha: str
+
+    @field_validator("fecha")
+    @classmethod
+    def fecha_valida(cls, value: str) -> str:
+        try:
+            date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("La fecha debe tener el formato YYYY-MM-DD") from exc
+        return value
+
+
+class DisponibilidadAsignar(BaseModel):
     lider_id: str
     fecha: str
 
@@ -1838,7 +1853,9 @@ def obtener_linea_tiempo(desde: date, hasta: date) -> list[dict]:
     avance ese dia). A diferencia de obtener_vista_trabajos_por_fecha, no
     reconstruye el estado vigente del trabajo dia a dia ni resuelve
     perfiles completos: es una vista historica de solo lectura, mas
-    liviana, pensada para pintar un Gantt con varios dias a la vez."""
+    liviana, pensada para pintar un Gantt con varios dias a la vez.
+    Tambien incluye, con tipo="no_disponible", los dias en que un lider
+    quedo marcado como no disponible (tabla disponibilidad)."""
     inicio = datetime.combine(desde, datetime.min.time(), tzinfo=ZONA_COLOMBIA)
     fin = datetime.combine(hasta, datetime.min.time(), tzinfo=ZONA_COLOMBIA) + timedelta(days=1)
 
@@ -1907,10 +1924,12 @@ def obtener_linea_tiempo(desde: date, hasta: date) -> list[dict]:
     trabajo_por_id = {t["id"]: t for t in trabajos_resp.data or []}
 
     resultado = []
+    lider_y_fecha_con_site: set[tuple[str, str]] = set()
     for (trabajo_id, fecha), lider_id in lider_por_trabajo_y_fecha.items():
         trabajo = trabajo_por_id.get(trabajo_id)
         if not trabajo:
             continue
+        lider_y_fecha_con_site.add((lider_id, fecha))
         resultado.append(
             {
                 "fecha": fecha,
@@ -1918,8 +1937,42 @@ def obtener_linea_tiempo(desde: date, hasta: date) -> list[dict]:
                 "site": trabajo["site"],
                 "zona": trabajo["zona"],
                 "lider_id": lider_id,
+                "tipo": "site",
             }
         )
+
+    try:
+        disponibilidad_resp = (
+            supabase.table("disponibilidad")
+            .select("lider_id, fecha")
+            .gte("fecha", desde.isoformat())
+            .lte("fecha", hasta.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la disponibilidad del rango.",
+        ) from exc
+
+    # Si por alguna razon (dato historico) un lider quedo con site
+    # asignado Y marcado no disponible el mismo dia, gana el site: ya
+    # esta trabajando, mostrar tambien "no disponible" seria confuso.
+    for fila in disponibilidad_resp.data or []:
+        clave = (fila["lider_id"], fila["fecha"])
+        if clave in lider_y_fecha_con_site:
+            continue
+        resultado.append(
+            {
+                "fecha": fila["fecha"],
+                "trabajo_id": None,
+                "site": None,
+                "zona": None,
+                "lider_id": fila["lider_id"],
+                "tipo": "no_disponible",
+            }
+        )
+
     return resultado
 
 
@@ -2020,6 +2073,25 @@ def asignar_programacion(
     _validar_fecha_no_pasada(fecha_obj)
 
     try:
+        marcado_no_disponible = (
+            supabase.table("disponibilidad")
+            .select("id")
+            .eq("lider_id", payload.lider_id)
+            .eq("fecha", payload.fecha)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al validar la disponibilidad del lider.",
+        ) from exc
+    if marcado_no_disponible.data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El lider esta marcado como no disponible ese dia. Quita esa marca antes de asignarle un site.",
+        )
+
+    try:
         supabase.table("programacion").upsert(
             {
                 "trabajo_id": payload.trabajo_id,
@@ -2070,4 +2142,110 @@ def quitar_programacion(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al quitar la asignacion.",
+        ) from exc
+
+
+@app.get("/api/admin/disponibilidad", response_model=list[str])
+def listar_disponibilidad(
+    fecha: str = Query(..., description="YYYY-MM-DD"),
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> list[str]:
+    """Ids de los lideres marcados como no disponibles en esa fecha,
+    usado por la Programacion para mostrar la marca junto a cada lider."""
+    try:
+        fecha_obj = date.fromisoformat(fecha)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+    try:
+        resp = (
+            supabase.table("disponibilidad")
+            .select("lider_id")
+            .eq("fecha", fecha_obj.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la disponibilidad.",
+        ) from exc
+
+    return [fila["lider_id"] for fila in resp.data or []]
+
+
+@app.put("/api/admin/disponibilidad", status_code=status.HTTP_204_NO_CONTENT)
+def marcar_no_disponible(
+    payload: DisponibilidadAsignar,
+    admin: UsuarioActual = Depends(requerir_staff),
+) -> None:
+    """Marca a un lider como no disponible en una fecha dada: no se le
+    puede asignar ningun site ese dia (ver asignar_programacion), pero si
+    se refleja en Programacion y en el Gantt. Requiere que el lider no
+    tenga ya sites asignados esa fecha (se deben quitar primero)."""
+    obtener_perfil_lider(payload.lider_id)  # valida rol lider_cuadrilla y habilitado
+    fecha_obj = date.fromisoformat(payload.fecha)
+    _validar_fecha_no_pasada(fecha_obj)
+
+    try:
+        sites_asignados = (
+            supabase.table("programacion")
+            .select("id")
+            .eq("lider_id", payload.lider_id)
+            .eq("fecha", payload.fecha)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al validar los sites asignados.",
+        ) from exc
+    if sites_asignados.data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El lider ya tiene sites asignados ese dia. Quitalos antes de marcarlo como no disponible.",
+        )
+
+    try:
+        supabase.table("disponibilidad").upsert(
+            {
+                "lider_id": payload.lider_id,
+                "fecha": payload.fecha,
+                "registrado_por": admin.id,
+            },
+            on_conflict="lider_id,fecha",
+        ).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al marcar la disponibilidad.",
+        ) from exc
+
+
+@app.delete("/api/admin/disponibilidad/{lider_id}", status_code=status.HTTP_204_NO_CONTENT)
+def quitar_no_disponible(
+    lider_id: str,
+    fecha: str = Query(..., description="YYYY-MM-DD"),
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> None:
+    """Quita la marca de no disponible de un lider en una fecha dada."""
+    try:
+        fecha_obj = date.fromisoformat(fecha)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+    _validar_fecha_no_pasada(fecha_obj)
+
+    try:
+        supabase.table("disponibilidad").delete().eq("lider_id", lider_id).eq(
+            "fecha", fecha
+        ).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al quitar la marca de no disponible.",
         ) from exc

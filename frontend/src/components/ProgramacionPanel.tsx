@@ -138,6 +138,9 @@ export default function ProgramacionPanel() {
   const [trabajoOcupadoId, setTrabajoOcupadoId] = useState<string | null>(null);
   const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
 
+  const [noDisponibles, setNoDisponibles] = useState<Set<string>>(new Set());
+  const [liderOcupadoId, setLiderOcupadoId] = useState<string | null>(null);
+
   const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
 
   // La Programacion es hacia adelante: se puede seguir consultando un
@@ -162,12 +165,19 @@ export default function ProgramacionPanel() {
     setError(null);
     try {
       const parametros = new URLSearchParams({ fecha: fechaConsulta });
-      const res = await fetchAutenticado(
-        `${API_URL}/api/admin/programacion?${parametros.toString()}`
-      );
-      if (!res.ok) throw new Error();
-      const data: AvanceDiarioAdmin[] = await res.json();
+      const [resProgramacion, resDisponibilidad] = await Promise.all([
+        fetchAutenticado(`${API_URL}/api/admin/programacion?${parametros.toString()}`),
+        fetchAutenticado(`${API_URL}/api/admin/disponibilidad?${parametros.toString()}`),
+      ]);
+      if (!resProgramacion.ok) throw new Error();
+      const data: AvanceDiarioAdmin[] = await resProgramacion.json();
       setFilas(data);
+      if (resDisponibilidad.ok) {
+        const idsNoDisponibles: string[] = await resDisponibilidad.json();
+        setNoDisponibles(new Set(idsNoDisponibles));
+      } else {
+        setNoDisponibles(new Set());
+      }
     } catch {
       setError("No se pudo cargar la programacion de ese dia.");
     } finally {
@@ -239,6 +249,56 @@ export default function ProgramacionPanel() {
     }
   };
 
+  const marcarNoDisponible = async (liderId: string) => {
+    setErrorAsignacion(null);
+    setLiderOcupadoId(liderId);
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/disponibilidad`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lider_id: liderId, fecha }),
+      });
+
+      if (res.status === 204) {
+        setNoDisponibles((prev) => new Set(prev).add(liderId));
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorAsignacion(data?.detail ?? "Ocurrio un error al marcar la disponibilidad.");
+      }
+    } catch {
+      setErrorAsignacion("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setLiderOcupadoId(null);
+    }
+  };
+
+  const quitarNoDisponible = async (liderId: string) => {
+    setErrorAsignacion(null);
+    setLiderOcupadoId(liderId);
+    try {
+      const parametros = new URLSearchParams({ fecha });
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/disponibilidad/${liderId}?${parametros.toString()}`,
+        { method: "DELETE" }
+      );
+
+      if (res.status === 204) {
+        setNoDisponibles((prev) => {
+          const siguiente = new Set(prev);
+          siguiente.delete(liderId);
+          return siguiente;
+        });
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorAsignacion(data?.detail ?? "Ocurrio un error al quitar la disponibilidad.");
+      }
+    } catch {
+      setErrorAsignacion("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setLiderOcupadoId(null);
+    }
+  };
+
   const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
     weekday: "long",
     day: "2-digit",
@@ -307,22 +367,67 @@ export default function ProgramacionPanel() {
             {lideresHabilitados.map((lider) => {
               const sitesDelLider = filasPorLider[lider.id] ?? [];
               const sitesParaAgregar = filas.filter((f) => f.lider_id !== lider.id);
+              const marcadoNoDisponible = noDisponibles.has(lider.id);
+              const ocupadoDisponibilidad = liderOcupadoId === lider.id;
 
               return (
-                <div key={lider.id} className="border border-slate-200 rounded-lg p-4">
+                <div
+                  key={lider.id}
+                  className={
+                    "border rounded-lg p-4 " +
+                    (marcadoNoDisponible ? "border-slate-200 bg-slate-50" : "border-slate-200")
+                  }
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                     <h3 className="font-semibold text-slate-800">{lider.nombre_completo}</h3>
-                    <AgregarSiteControl
-                      liderId={lider.id}
-                      opciones={sitesParaAgregar}
-                      deshabilitado={
-                        trabajoOcupadoId !== null || esFechaPasada || sitesParaAgregar.length === 0
-                      }
-                      onAgregar={(trabajoId) => asignarLider(trabajoId, lider.id)}
-                    />
+                    <div className="flex items-center gap-3">
+                      {!marcadoNoDisponible && (
+                        <AgregarSiteControl
+                          liderId={lider.id}
+                          opciones={sitesParaAgregar}
+                          deshabilitado={
+                            trabajoOcupadoId !== null ||
+                            esFechaPasada ||
+                            sitesParaAgregar.length === 0
+                          }
+                          onAgregar={(trabajoId) => asignarLider(trabajoId, lider.id)}
+                        />
+                      )}
+                      {marcadoNoDisponible ? (
+                        <button
+                          type="button"
+                          onClick={() => quitarNoDisponible(lider.id)}
+                          disabled={ocupadoDisponibilidad || esFechaPasada}
+                          className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium px-3 py-1 rounded-md border border-cobre-200"
+                        >
+                          {ocupadoDisponibilidad ? "..." : "Quitar no disponible"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => marcarNoDisponible(lider.id)}
+                          disabled={ocupadoDisponibilidad || esFechaPasada || sitesDelLider.length > 0}
+                          title={
+                            sitesDelLider.length > 0
+                              ? "Quita los sites asignados antes de marcarlo no disponible"
+                              : undefined
+                          }
+                          className="text-sm text-slate-600 hover:text-slate-800 disabled:text-slate-300 font-medium px-3 py-1 rounded-md border border-slate-300"
+                        >
+                          {ocupadoDisponibilidad ? "..." : "No disponible"}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {sitesDelLider.length === 0 ? (
+                  {marcadoNoDisponible ? (
+                    <p className="text-sm text-slate-500">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600 mr-2">
+                        No disponible
+                      </span>
+                      No se le puede asignar ningun site este dia.
+                    </p>
+                  ) : sitesDelLider.length === 0 ? (
                     <p className="text-sm text-slate-400">Sin sites asignados para este dia.</p>
                   ) : (
                     <table className="w-full text-left text-sm">
