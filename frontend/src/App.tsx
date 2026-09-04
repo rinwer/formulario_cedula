@@ -230,9 +230,9 @@ export default function App() {
                 <DashboardPanel />
               )}
             {tabEfectiva === "gantt" &&
-              (perfil.role === "administrador" || perfil.role === "coordinador") && (
-                <GanttPanel />
-              )}
+              (perfil.role === "administrador" ||
+                perfil.role === "coordinador" ||
+                perfil.role === "visualizador") && <GanttPanel />}
           </>
         ) : (
           <MisTrabajosPanel />
