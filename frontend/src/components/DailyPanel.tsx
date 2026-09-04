@@ -111,22 +111,7 @@ export default function DailyPanel() {
             </div>
           )}
 
-          {!cargando && noDisponibles.length > 0 && (
-            <div className="flex items-start gap-2 rounded-lg px-3 py-2 mb-4 text-sm font-medium bg-slate-100 text-slate-600 border border-slate-200">
-              <span>
-                {noDisponibles.length === 1 ? "1 lider no disponible" : `${noDisponibles.length} lideres no disponibles`}
-                {": "}
-                {noDisponibles
-                  .map((d, i) => {
-                    const nombre = nombrePorLiderId[d.lider_id] ?? d.lider_id;
-                    return d.motivo ? `${nombre} (${d.motivo})` : nombre;
-                  })
-                  .join(", ")}
-              </span>
-            </div>
-          )}
-
-          {filas.length > 0 && (
+          {(filas.length > 0 || noDisponibles.length > 0) && (
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
@@ -187,6 +172,22 @@ export default function DailyPanel() {
                     <td className="py-2 pr-4 text-slate-700">
                       {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
                     </td>
+                  </tr>
+                ))}
+                {noDisponibles.map((d) => (
+                  <tr key={`no-disponible-${d.lider_id}`} className="border-b border-slate-100 last:border-0 align-top bg-slate-50">
+                    <td className="py-2 pr-4 text-slate-400">—</td>
+                    <td className="py-2 pr-4 text-slate-700">
+                      {nombrePorLiderId[d.lider_id] ?? d.lider_id}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                        No disponible
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">—</td>
+                    <td className="py-2 pr-4 text-slate-400">—</td>
+                    <td className="py-2 pr-4 text-slate-700">{d.motivo ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
