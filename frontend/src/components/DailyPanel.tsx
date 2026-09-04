@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
-import { AvanceDiarioAdmin } from "../types";
+import { AvanceDiarioAdmin, Disponibilidad, LiderLigero } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -11,17 +11,32 @@ export default function DailyPanel() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [lideres, setLideres] = useState<LiderLigero[]>([]);
+  const [noDisponibles, setNoDisponibles] = useState<Disponibilidad[]>([]);
+
+  useEffect(() => {
+    fetchAutenticado(`${API_URL}/api/admin/lideres`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: LiderLigero[]) => setLideres(data))
+      .catch(() => {
+        // Si falla, se muestra el id del lider en vez del nombre; el
+        // resto del panel sigue funcionando.
+      });
+  }, []);
+
   const cargar = async (fechaConsulta: string) => {
     setCargando(true);
     setError(null);
     try {
       const parametros = new URLSearchParams({ fecha: fechaConsulta });
-      const res = await fetchAutenticado(
-        `${API_URL}/api/admin/avances-diarios?${parametros.toString()}`
-      );
-      if (!res.ok) throw new Error();
-      const data: AvanceDiarioAdmin[] = await res.json();
+      const [resAvances, resDisponibilidad] = await Promise.all([
+        fetchAutenticado(`${API_URL}/api/admin/avances-diarios?${parametros.toString()}`),
+        fetchAutenticado(`${API_URL}/api/admin/disponibilidad?${parametros.toString()}`),
+      ]);
+      if (!resAvances.ok) throw new Error();
+      const data: AvanceDiarioAdmin[] = await resAvances.json();
       setFilas(data);
+      setNoDisponibles(resDisponibilidad.ok ? await resDisponibilidad.json() : []);
     } catch {
       setError("No se pudo cargar la informacion del dia.");
     } finally {
@@ -33,6 +48,11 @@ export default function DailyPanel() {
     cargar(fecha);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  const nombrePorLiderId: Record<string, string> = {};
+  lideres.forEach((l) => {
+    nombrePorLiderId[l.id] = l.nombre_completo;
+  });
 
   const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
     weekday: "long",
@@ -88,6 +108,21 @@ export default function DailyPanel() {
               {pendientes > 0
                 ? `${pendientes} de ${filas.length} sites sin actualizar hoy`
                 : `Todos los sites (${filas.length}) actualizaron hoy`}
+            </div>
+          )}
+
+          {!cargando && noDisponibles.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg px-3 py-2 mb-4 text-sm font-medium bg-slate-100 text-slate-600 border border-slate-200">
+              <span>
+                {noDisponibles.length === 1 ? "1 lider no disponible" : `${noDisponibles.length} lideres no disponibles`}
+                {": "}
+                {noDisponibles
+                  .map((d, i) => {
+                    const nombre = nombrePorLiderId[d.lider_id] ?? d.lider_id;
+                    return d.motivo ? `${nombre} (${d.motivo})` : nombre;
+                  })
+                  .join(", ")}
+              </span>
             </div>
           )}
 

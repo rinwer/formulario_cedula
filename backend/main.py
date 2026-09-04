@@ -2187,10 +2187,12 @@ def quitar_programacion(
 @app.get("/api/admin/disponibilidad", response_model=list[DisponibilidadOut])
 def listar_disponibilidad(
     fecha: str = Query(..., description="YYYY-MM-DD"),
-    _admin: UsuarioActual = Depends(requerir_staff),
+    _admin: UsuarioActual = Depends(requerir_acceso_daily),
 ) -> list[dict]:
-    """Lideres marcados como no disponibles en esa fecha (con su motivo),
-    usado por la Programacion para mostrar la marca junto a cada lider."""
+    """Lideres marcados como no disponibles en esa fecha (con su motivo).
+    Usado por Programacion (para mostrar la marca junto a cada lider) y
+    por Daily (para que tambien el visualizador vea, de solo lectura,
+    quien no estaba disponible ese dia)."""
     try:
         fecha_obj = date.fromisoformat(fecha)
     except ValueError as exc:
