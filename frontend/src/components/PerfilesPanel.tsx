@@ -26,6 +26,15 @@ const ROLE_BADGE: Record<string, string> = {
   lider_cuadrilla: "bg-emerald-100 text-emerald-700",
 };
 
+type ColumnaOrden = "nombre" | "email" | "role" | "activo";
+
+const COLUMNAS_ORDENABLES: { columna: ColumnaOrden; label: string }[] = [
+  { columna: "nombre", label: "Nombre" },
+  { columna: "email", label: "Correo / contrasena" },
+  { columna: "role", label: "Rol" },
+  { columna: "activo", label: "Estado" },
+];
+
 export default function PerfilesPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,6 +58,35 @@ export default function PerfilesPanel() {
   const [activoEditado, setActivoEditado] = useState(true);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
+  const [orden, setOrden] = useState<{ columna: ColumnaOrden; direccion: "asc" | "desc" } | null>(
+    null
+  );
+
+  const cambiarOrden = (columna: ColumnaOrden) => {
+    setOrden((prev) =>
+      prev?.columna === columna
+        ? { columna, direccion: prev.direccion === "asc" ? "desc" : "asc" }
+        : { columna, direccion: "asc" }
+    );
+  };
+
+  const usuariosOrdenados = [...usuarios].sort((a, b) => {
+    if (!orden) return 0;
+    const factor = orden.direccion === "asc" ? 1 : -1;
+    switch (orden.columna) {
+      case "nombre":
+        return a.nombre_completo.localeCompare(b.nombre_completo) * factor;
+      case "email":
+        return a.email.localeCompare(b.email) * factor;
+      case "role":
+        return (ROLE_LABEL[a.role] ?? a.role).localeCompare(ROLE_LABEL[b.role] ?? b.role) * factor;
+      case "activo":
+        return (Number(a.activo) - Number(b.activo)) * factor;
+      default:
+        return 0;
+    }
+  });
 
   const cerrarPopup = () => setPopup(initialPopup);
 
@@ -300,15 +338,25 @@ export default function PerfilesPanel() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Nombre</th>
-                  <th className="py-2 pr-4 font-medium">Correo / contrasena</th>
-                  <th className="py-2 pr-4 font-medium">Rol</th>
-                  <th className="py-2 pr-4 font-medium">Estado</th>
+                  {COLUMNAS_ORDENABLES.map(({ columna, label }) => (
+                    <th key={columna} className="py-2 pr-4 font-medium">
+                      <button
+                        type="button"
+                        onClick={() => cambiarOrden(columna)}
+                        className="flex items-center gap-1 font-medium text-slate-500 hover:text-slate-700"
+                      >
+                        {label}
+                        <span className="text-[10px] w-3 inline-block">
+                          {orden?.columna === columna ? (orden.direccion === "asc" ? "▲" : "▼") : ""}
+                        </span>
+                      </button>
+                    </th>
+                  ))}
                   <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {usuarios.map((usuario) => {
+                {usuariosOrdenados.map((usuario) => {
                   const editando = idEditando === usuario.id;
                   return (
                     <tr key={usuario.id} className="border-b border-slate-100 last:border-0 align-top">

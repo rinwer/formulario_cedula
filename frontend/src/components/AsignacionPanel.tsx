@@ -24,6 +24,15 @@ const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
   standby: "bg-amber-100 text-amber-700",
 };
 
+type ColumnaOrdenTrabajo = "id_smp" | "site" | "zona" | "estado";
+
+const COLUMNAS_ORDENABLES_TRABAJOS: { columna: ColumnaOrdenTrabajo; label: string }[] = [
+  { columna: "id_smp", label: "ID / SMP" },
+  { columna: "site", label: "Site" },
+  { columna: "zona", label: "Zona" },
+  { columna: "estado", label: "Estado" },
+];
+
 type InfoTooltipProps = {
   texto: string;
   variante?: "info" | "advertencia";
@@ -93,6 +102,38 @@ export default function AsignacionPanel() {
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
   const [cargandoLista, setCargandoLista] = useState(false);
   const [errorLista, setErrorLista] = useState<string | null>(null);
+
+  const [ordenTrabajos, setOrdenTrabajos] = useState<{
+    columna: ColumnaOrdenTrabajo;
+    direccion: "asc" | "desc";
+  } | null>(null);
+
+  const cambiarOrdenTrabajos = (columna: ColumnaOrdenTrabajo) => {
+    setOrdenTrabajos((prev) =>
+      prev?.columna === columna
+        ? { columna, direccion: prev.direccion === "asc" ? "desc" : "asc" }
+        : { columna, direccion: "asc" }
+    );
+  };
+
+  const trabajosOrdenados = [...trabajos].sort((a, b) => {
+    if (!ordenTrabajos) return 0;
+    const factor = ordenTrabajos.direccion === "asc" ? 1 : -1;
+    switch (ordenTrabajos.columna) {
+      case "id_smp":
+        return a.id_smp.localeCompare(b.id_smp) * factor;
+      case "site":
+        return a.site.localeCompare(b.site) * factor;
+      case "zona":
+        return a.zona.localeCompare(b.zona) * factor;
+      case "estado":
+        return (ESTADO_LABEL[a.estado] ?? a.estado).localeCompare(
+          ESTADO_LABEL[b.estado] ?? b.estado
+        ) * factor;
+      default:
+        return 0;
+    }
+  });
 
   const [idEditando, setIdEditando] = useState<string | null>(null);
   const [idSmpEditado, setIdSmpEditado] = useState("");
@@ -584,15 +625,29 @@ export default function AsignacionPanel() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4 font-medium">ID / SMP</th>
-                  <th className="py-2 pr-4 font-medium">Site</th>
-                  <th className="py-2 pr-4 font-medium">Zona</th>
-                  <th className="py-2 pr-4 font-medium">Estado</th>
+                  {COLUMNAS_ORDENABLES_TRABAJOS.map(({ columna, label }) => (
+                    <th key={columna} className="py-2 pr-4 font-medium">
+                      <button
+                        type="button"
+                        onClick={() => cambiarOrdenTrabajos(columna)}
+                        className="flex items-center gap-1 font-medium text-slate-500 hover:text-slate-700"
+                      >
+                        {label}
+                        <span className="text-[10px] w-3 inline-block">
+                          {ordenTrabajos?.columna === columna
+                            ? ordenTrabajos.direccion === "asc"
+                              ? "▲"
+                              : "▼"
+                            : ""}
+                        </span>
+                      </button>
+                    </th>
+                  ))}
                   <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {trabajos.map((trabajo) => {
+                {trabajosOrdenados.map((trabajo) => {
                   const editando = idEditando === trabajo.id;
                   return (
                     <tr key={trabajo.id} className="border-b border-slate-100 last:border-0 align-top">
