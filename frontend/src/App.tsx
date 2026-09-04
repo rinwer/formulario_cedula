@@ -98,7 +98,7 @@ export default function App() {
 
   // "Staff" = cualquier rol que usa el layout con pestanas (en vez de la
   // bandeja del lider_cuadrilla): administrador, coordinador y
-  // visualizador (este ultimo de solo lectura, solo ve Daily).
+  // visualizador (este ultimo de solo lectura, solo ve Daily y Gantt).
   const esStaff =
     perfil?.role === "administrador" ||
     perfil?.role === "coordinador" ||
@@ -106,14 +106,14 @@ export default function App() {
 
   // Cada rol ve un subconjunto de pestanas: administrador las ve todas;
   // coordinador todo menos Perfiles (no gestiona usuarios); visualizador
-  // solo Daily (rol de solo lectura).
+  // solo Daily y Gantt (rol de solo lectura).
   const tabsVisibles =
     perfil?.role === "administrador"
       ? TABS
       : perfil?.role === "coordinador"
       ? TABS.filter((tab) => tab.key !== "perfiles")
       : perfil?.role === "visualizador"
-      ? TABS.filter((tab) => tab.key === "daily")
+      ? TABS.filter((tab) => tab.key === "daily" || tab.key === "gantt")
       : [];
 
   // tabActiva arranca en "perfiles" antes de saber el rol; si el usuario

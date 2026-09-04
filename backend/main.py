@@ -187,6 +187,12 @@ class UsuarioOut(BaseModel):
     activo: bool = True
 
 
+class LiderOut(BaseModel):
+    id: str
+    nombre_completo: str
+    activo: bool = True
+
+
 class PerfilUpdate(BaseModel):
     nombre_completo: str = Field(..., min_length=1)
     email: EmailStr
@@ -544,6 +550,30 @@ def listar_usuarios(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al obtener los usuarios.",
+        ) from exc
+
+    return response.data or []
+
+
+@app.get("/api/admin/lideres", response_model=list[LiderOut])
+def listar_lideres(
+    _admin: UsuarioActual = Depends(requerir_acceso_daily),
+) -> list[dict]:
+    """Lista liviana de lideres_cuadrilla (solo id, nombre y activo), para
+    resolver nombres en vistas de solo lectura como el Gantt sin exponer
+    el directorio completo de usuarios (email/rol de todo el staff sigue
+    restringido a administrador via /api/admin/usuarios)."""
+    try:
+        response = (
+            supabase.table("profiles")
+            .select("id, nombre_completo, activo")
+            .eq("role", "lider_cuadrilla")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los lideres.",
         ) from exc
 
     return response.data or []
@@ -2028,10 +2058,11 @@ def listar_programacion(
 def listar_linea_tiempo(
     desde: str = Query(..., description="YYYY-MM-DD"),
     hasta: str = Query(..., description="YYYY-MM-DD"),
-    _admin: UsuarioActual = Depends(requerir_staff),
+    _admin: UsuarioActual = Depends(requerir_acceso_daily),
 ) -> list[dict]:
     """Vista historica de solo lectura para el Gantt: por cada dia del
-    rango, en que site estuvo cada lider."""
+    rango, en que site estuvo cada lider. El visualizador tambien puede
+    verla (es de solo lectura, igual que el Daily)."""
     try:
         desde_obj = date.fromisoformat(desde)
         hasta_obj = date.fromisoformat(hasta)

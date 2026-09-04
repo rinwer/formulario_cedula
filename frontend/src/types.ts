@@ -15,6 +15,12 @@ export type Usuario = {
   activo: boolean;
 };
 
+export type LiderLigero = {
+  id: string;
+  nombre_completo: string;
+  activo: boolean;
+};
+
 export type EstadoTrabajo = "asignado" | "finalizado" | "standby";
 
 export type Trabajo = {

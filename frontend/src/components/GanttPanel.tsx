@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { hoyIso } from "./Calendario";
-import { LineaTiempoItem, Usuario } from "../types";
+import { LineaTiempoItem, LiderLigero } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -98,14 +98,17 @@ export default function GanttPanel() {
   const dias = listaDeDias(desdeFecha, hastaFecha);
 
   const [items, setItems] = useState<LineaTiempoItem[]>([]);
-  const [lideres, setLideres] = useState<Usuario[]>([]);
+  const [lideres, setLideres] = useState<LiderLigero[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchAutenticado(`${API_URL}/api/admin/usuarios`)
+    // /api/admin/lideres es una lista liviana (solo lideres_cuadrilla,
+    // sin email/rol) accesible tambien para coordinador y visualizador;
+    // el directorio completo de usuarios sigue restringido a administrador.
+    fetchAutenticado(`${API_URL}/api/admin/lideres`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: Usuario[]) => setLideres(data))
+      .then((data: LiderLigero[]) => setLideres(data))
       .catch(() => {
         // Si falla, se muestra el id del lider en vez del nombre; el
         // resto del panel sigue funcionando.
@@ -136,7 +139,7 @@ export default function GanttPanel() {
 
   const nombrePorLiderId: Record<string, string> = {};
   lideres.forEach((l) => {
-    nombrePorLiderId[l.id] = l.nombre_completo || l.email;
+    nombrePorLiderId[l.id] = l.nombre_completo;
   });
 
   // fecha+lider -> celda (site o no disponible), para pintar cada celda
