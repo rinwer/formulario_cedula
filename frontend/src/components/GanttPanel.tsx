@@ -47,11 +47,11 @@ function listaDeDias(desde: string, hasta: string): string[] {
 
 type CeldaGantt =
   | { tipo: "site"; site: string; zona: string }
-  | { tipo: "no_disponible" };
+  | { tipo: "no_disponible"; motivo: string | null };
 
 type SegmentoGantt =
   | { tipo: "site"; site: string; zona: string; span: number }
-  | { tipo: "no_disponible"; span: number }
+  | { tipo: "no_disponible"; motivo: string | null; span: number }
   | { tipo: "vacio" };
 
 // Convierte los dias sueltos de un lider en tramos: dias consecutivos con
@@ -85,7 +85,7 @@ function segmentarFila(
       while (i + span < dias.length && celdaPorFecha?.[dias[i + span]]?.tipo === "no_disponible") {
         span += 1;
       }
-      segmentos.push({ tipo: "no_disponible", span });
+      segmentos.push({ tipo: "no_disponible", motivo: celda.motivo, span });
     }
     i += span;
   }
@@ -147,7 +147,7 @@ export default function GanttPanel() {
     liderIds.add(item.lider_id);
     (celdaPorLiderYFecha[item.lider_id] ??= {})[item.fecha] =
       item.tipo === "no_disponible"
-        ? { tipo: "no_disponible" }
+        ? { tipo: "no_disponible", motivo: item.motivo }
         : { tipo: "site", site: item.site!, zona: item.zona! };
   });
 
@@ -267,7 +267,7 @@ export default function GanttPanel() {
                           className="p-0.5 text-center align-middle"
                         >
                           <div
-                            title="No disponible"
+                            title={segmento.motivo ? `No disponible: ${segmento.motivo}` : "No disponible"}
                             className="h-7 rounded text-[10px] font-medium truncate px-1 flex items-center justify-center bg-slate-200 text-slate-500"
                           >
                             No disponible

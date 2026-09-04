@@ -373,6 +373,7 @@ class LineaTiempoItem(BaseModel):
     trabajo_id: str | None = None
     site: str | None = None
     zona: str | None = None
+    motivo: str | None = None
 
 
 class ProgramacionAsignar(BaseModel):
@@ -393,6 +394,7 @@ class ProgramacionAsignar(BaseModel):
 class DisponibilidadAsignar(BaseModel):
     lider_id: str
     fecha: str
+    motivo: str | None = None
 
     @field_validator("fecha")
     @classmethod
@@ -402,6 +404,11 @@ class DisponibilidadAsignar(BaseModel):
         except ValueError as exc:
             raise ValueError("La fecha debe tener el formato YYYY-MM-DD") from exc
         return value
+
+
+class DisponibilidadOut(BaseModel):
+    lider_id: str
+    motivo: str | None = None
 
 
 def _parsear_timestamptz(valor: str) -> datetime:
@@ -1944,7 +1951,7 @@ def obtener_linea_tiempo(desde: date, hasta: date) -> list[dict]:
     try:
         disponibilidad_resp = (
             supabase.table("disponibilidad")
-            .select("lider_id, fecha")
+            .select("lider_id, fecha, motivo")
             .gte("fecha", desde.isoformat())
             .lte("fecha", hasta.isoformat())
             .execute()
@@ -1970,6 +1977,7 @@ def obtener_linea_tiempo(desde: date, hasta: date) -> list[dict]:
                 "zona": None,
                 "lider_id": fila["lider_id"],
                 "tipo": "no_disponible",
+                "motivo": fila.get("motivo"),
             }
         )
 
@@ -2145,12 +2153,12 @@ def quitar_programacion(
         ) from exc
 
 
-@app.get("/api/admin/disponibilidad", response_model=list[str])
+@app.get("/api/admin/disponibilidad", response_model=list[DisponibilidadOut])
 def listar_disponibilidad(
     fecha: str = Query(..., description="YYYY-MM-DD"),
     _admin: UsuarioActual = Depends(requerir_staff),
-) -> list[str]:
-    """Ids de los lideres marcados como no disponibles en esa fecha,
+) -> list[dict]:
+    """Lideres marcados como no disponibles en esa fecha (con su motivo),
     usado por la Programacion para mostrar la marca junto a cada lider."""
     try:
         fecha_obj = date.fromisoformat(fecha)
@@ -2163,7 +2171,7 @@ def listar_disponibilidad(
     try:
         resp = (
             supabase.table("disponibilidad")
-            .select("lider_id")
+            .select("lider_id, motivo")
             .eq("fecha", fecha_obj.isoformat())
             .execute()
         )
@@ -2173,7 +2181,7 @@ def listar_disponibilidad(
             detail="Error interno al obtener la disponibilidad.",
         ) from exc
 
-    return [fila["lider_id"] for fila in resp.data or []]
+    return resp.data or []
 
 
 @app.put("/api/admin/disponibilidad", status_code=status.HTTP_204_NO_CONTENT)
@@ -2213,6 +2221,7 @@ def marcar_no_disponible(
             {
                 "lider_id": payload.lider_id,
                 "fecha": payload.fecha,
+                "motivo": payload.motivo,
                 "registrado_por": admin.id,
             },
             on_conflict="lider_id,fecha",

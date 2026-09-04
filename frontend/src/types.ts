@@ -86,4 +86,10 @@ export type LineaTiempoItem = {
   trabajo_id: string | null;
   site: string | null;
   zona: string | null;
+  motivo: string | null;
+};
+
+export type Disponibilidad = {
+  lider_id: string;
+  motivo: string | null;
 };

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
-import { AvanceDiarioAdmin, Usuario } from "../types";
+import { AvanceDiarioAdmin, Disponibilidad, Usuario } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -138,8 +138,10 @@ export default function ProgramacionPanel() {
   const [trabajoOcupadoId, setTrabajoOcupadoId] = useState<string | null>(null);
   const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
 
-  const [noDisponibles, setNoDisponibles] = useState<Set<string>>(new Set());
+  const [noDisponibles, setNoDisponibles] = useState<Map<string, string | null>>(new Map());
   const [liderOcupadoId, setLiderOcupadoId] = useState<string | null>(null);
+  const [liderMotivoAbierto, setLiderMotivoAbierto] = useState<string | null>(null);
+  const [motivoTexto, setMotivoTexto] = useState("");
 
   const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
 
@@ -173,10 +175,10 @@ export default function ProgramacionPanel() {
       const data: AvanceDiarioAdmin[] = await resProgramacion.json();
       setFilas(data);
       if (resDisponibilidad.ok) {
-        const idsNoDisponibles: string[] = await resDisponibilidad.json();
-        setNoDisponibles(new Set(idsNoDisponibles));
+        const disponibilidad: Disponibilidad[] = await resDisponibilidad.json();
+        setNoDisponibles(new Map(disponibilidad.map((d) => [d.lider_id, d.motivo])));
       } else {
-        setNoDisponibles(new Set());
+        setNoDisponibles(new Map());
       }
     } catch {
       setError("No se pudo cargar la programacion de ese dia.");
@@ -192,6 +194,8 @@ export default function ProgramacionPanel() {
 
   useEffect(() => {
     cargar(fecha);
+    setLiderMotivoAbierto(null);
+    setMotivoTexto("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
@@ -249,18 +253,21 @@ export default function ProgramacionPanel() {
     }
   };
 
-  const marcarNoDisponible = async (liderId: string) => {
+  const marcarNoDisponible = async (liderId: string, motivo: string) => {
     setErrorAsignacion(null);
     setLiderOcupadoId(liderId);
     try {
+      const motivoLimpio = motivo.trim() || null;
       const res = await fetchAutenticado(`${API_URL}/api/admin/disponibilidad`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lider_id: liderId, fecha }),
+        body: JSON.stringify({ lider_id: liderId, fecha, motivo: motivoLimpio }),
       });
 
       if (res.status === 204) {
-        setNoDisponibles((prev) => new Set(prev).add(liderId));
+        setNoDisponibles((prev) => new Map(prev).set(liderId, motivoLimpio));
+        setLiderMotivoAbierto(null);
+        setMotivoTexto("");
       } else {
         const data = await res.json().catch(() => null);
         setErrorAsignacion(data?.detail ?? "Ocurrio un error al marcar la disponibilidad.");
@@ -284,7 +291,7 @@ export default function ProgramacionPanel() {
 
       if (res.status === 204) {
         setNoDisponibles((prev) => {
-          const siguiente = new Set(prev);
+          const siguiente = new Map(prev);
           siguiente.delete(liderId);
           return siguiente;
         });
@@ -368,7 +375,9 @@ export default function ProgramacionPanel() {
               const sitesDelLider = filasPorLider[lider.id] ?? [];
               const sitesParaAgregar = filas.filter((f) => f.lider_id !== lider.id);
               const marcadoNoDisponible = noDisponibles.has(lider.id);
+              const motivoActual = noDisponibles.get(lider.id) ?? null;
               const ocupadoDisponibilidad = liderOcupadoId === lider.id;
+              const formularioMotivoAbierto = liderMotivoAbierto === lider.id;
 
               return (
                 <div
@@ -405,8 +414,15 @@ export default function ProgramacionPanel() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => marcarNoDisponible(lider.id)}
-                          disabled={ocupadoDisponibilidad || esFechaPasada || sitesDelLider.length > 0}
+                          onClick={() => {
+                            if (formularioMotivoAbierto) {
+                              setLiderMotivoAbierto(null);
+                            } else {
+                              setLiderMotivoAbierto(lider.id);
+                              setMotivoTexto("");
+                            }
+                          }}
+                          disabled={esFechaPasada || sitesDelLider.length > 0}
                           title={
                             sitesDelLider.length > 0
                               ? "Quita los sites asignados antes de marcarlo no disponible"
@@ -414,18 +430,65 @@ export default function ProgramacionPanel() {
                           }
                           className="text-sm text-slate-600 hover:text-slate-800 disabled:text-slate-300 font-medium px-3 py-1 rounded-md border border-slate-300"
                         >
-                          {ocupadoDisponibilidad ? "..." : "No disponible"}
+                          No disponible
                         </button>
                       )}
                     </div>
                   </div>
 
-                  {marcadoNoDisponible ? (
+                  {formularioMotivoAbierto ? (
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <input
+                        type="text"
+                        value={motivoTexto}
+                        onChange={(e) => setMotivoTexto(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            marcarNoDisponible(lider.id, motivoTexto);
+                          }
+                        }}
+                        placeholder="Motivo (opcional): vacaciones, incapacidad, etc."
+                        autoFocus
+                        className="flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => marcarNoDisponible(lider.id, motivoTexto)}
+                          disabled={ocupadoDisponibilidad}
+                          className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 font-medium px-3 py-1 rounded-md whitespace-nowrap"
+                        >
+                          {ocupadoDisponibilidad ? "..." : "Guardar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLiderMotivoAbierto(null)}
+                          disabled={ocupadoDisponibilidad}
+                          className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1 rounded-md whitespace-nowrap"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : marcadoNoDisponible ? (
                     <p className="text-sm text-slate-500">
                       <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600 mr-2">
                         No disponible
                       </span>
-                      No se le puede asignar ningun site este dia.
+                      {motivoActual ?? <span className="italic">Sin motivo especificado.</span>}
+                      {!esFechaPasada && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLiderMotivoAbierto(lider.id);
+                            setMotivoTexto(motivoActual ?? "");
+                          }}
+                          className="ml-2 text-xs text-cobre-600 hover:text-cobre-800 underline"
+                        >
+                          Editar motivo
+                        </button>
+                      )}
                     </p>
                   ) : sitesDelLider.length === 0 ? (
                     <p className="text-sm text-slate-400">Sin sites asignados para este dia.</p>
