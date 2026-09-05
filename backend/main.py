@@ -2244,26 +2244,50 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
         for detalle in detalles_resp.data or []:
             detalles_por_avance.setdefault(detalle["avance_diario_id"], []).append(detalle)
 
-    acumulado_por_actividad: dict[str, float] = {}
-    filas_hoja: list[list] = []
+    # Un lider puede guardar el avance varias veces el mismo dia (por
+    # ejemplo, corrige un comentario o suma mas cantidad mas tarde): se
+    # agrupan por fecha para que el historial muestre una sola fila por
+    # dia, igual que ya hace _filas_export_rango con el Daily del dia.
+    avances_por_fecha: dict[str, list[dict]] = {}
+    orden_fechas: list[str] = []
     for avance in avances:
         fecha_local = (
             _parsear_timestamptz(avance["created_at"]).astimezone(ZONA_COLOMBIA).date().isoformat()
         )
-        detalle_dia = detalles_por_avance.get(avance["id"], [])
+        if fecha_local not in avances_por_fecha:
+            avances_por_fecha[fecha_local] = []
+            orden_fechas.append(fecha_local)
+        avances_por_fecha[fecha_local].append(avance)
+
+    acumulado_por_actividad: dict[str, float] = {}
+    filas_hoja: list[list] = []
+    for fecha_local in orden_fechas:
+        avances_del_dia = avances_por_fecha[fecha_local]
+        cantidad_dia_por_actividad: dict[str, float] = {}
+        comentarios_dia: list[str] = []
+        for avance in avances_del_dia:
+            for d in detalles_por_avance.get(avance["id"], []):
+                cantidad_dia_por_actividad[d["actividad_id"]] = (
+                    cantidad_dia_por_actividad.get(d["actividad_id"], 0) + d["cantidad"]
+                )
+            if avance.get("comentario"):
+                comentarios_dia.append(avance["comentario"])
+
         detalle_texto = " · ".join(
-            f"{hw_por_actividad.get(d['actividad_id'], '—')}: {d['cantidad']}" for d in detalle_dia
+            f"{hw_por_actividad.get(aid, '—')}: {cantidad}"
+            for aid, cantidad in cantidad_dia_por_actividad.items()
         )
-        for d in detalle_dia:
-            acumulado_por_actividad[d["actividad_id"]] = (
-                acumulado_por_actividad.get(d["actividad_id"], 0) + d["cantidad"]
-            )
+        for aid, cantidad in cantidad_dia_por_actividad.items():
+            acumulado_por_actividad[aid] = acumulado_por_actividad.get(aid, 0) + cantidad
         acumulado_total = sum(
             min(acumulado_por_actividad.get(aid, 0), qty_max)
             for aid, qty_max in qty_por_actividad.items()
         )
         porcentaje = round((acumulado_total / qty_total) * 100) if qty_total > 0 else None
-        perfil_lider = perfil_por_lider_id.get(avance.get("lider_id"), {})
+
+        # El lider del reporte mas reciente de ese dia es el que se
+        # muestra, si el site cambio de manos el mismo dia.
+        perfil_lider = perfil_por_lider_id.get(avances_del_dia[-1].get("lider_id"), {})
         filas_hoja.append(
             [
                 fecha_local,
@@ -2273,7 +2297,7 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
                 "Actualizado",
                 porcentaje,
                 detalle_texto,
-                avance.get("comentario") or "—",
+                " | ".join(comentarios_dia) if comentarios_dia else "—",
             ]
         )
 
