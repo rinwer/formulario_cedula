@@ -397,6 +397,26 @@ class TendenciaSite(BaseModel):
     serie: list[PuntoTendencia]
 
 
+class LiderStint(BaseModel):
+    trabajo_id: str
+    site: str
+    zona: str
+    fecha_inicio: str
+    fecha_fin: str
+    dias: int
+    porcentaje_final: int | None = None
+    es_actual: bool
+
+
+class LiderHistorialOut(BaseModel):
+    lider_id: str
+    stints: list[LiderStint]
+    sites_completados_historico: int
+    promedio_dias_por_site: float | None = None
+    porcentaje_promedio_historico: int | None = None
+    dias_no_disponible_mes: int
+
+
 class LineaTiempoItem(BaseModel):
     fecha: str
     lider_id: str
@@ -2547,6 +2567,198 @@ def obtener_tendencias_dashboard(
         resultado.append({"trabajo_id": tid, "serie": serie})
 
     return resultado
+
+
+def _contar_no_disponibles_mes(lider_id: str) -> int:
+    hoy = datetime.now(ZONA_COLOMBIA).date()
+    inicio_mes = hoy.replace(day=1)
+    try:
+        resp = (
+            supabase.table("disponibilidad")
+            .select("id")
+            .eq("lider_id", lider_id)
+            .gte("fecha", inicio_mes.isoformat())
+            .lte("fecha", hoy.isoformat())
+            .execute()
+        )
+    except Exception:
+        return 0
+    return len(resp.data or [])
+
+
+@app.get(
+    "/api/admin/dashboard/lider/{lider_id}/historial",
+    response_model=LiderHistorialOut,
+)
+def obtener_historial_lider(
+    lider_id: str,
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> dict:
+    """Reconstruye, a partir de la tabla programacion, cada 'estadia' de
+    un lider (tramo de dias consecutivos en el mismo site), para mostrar
+    cuanto duro cada site y con que % de avance cerro. El tramo cuya
+    ultima fecha es hoy o futura se marca como 'actual' y no cuenta para
+    los promedios historicos (todavia esta en curso)."""
+    try:
+        prog_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id, fecha")
+            .eq("lider_id", lider_id)
+            .order("fecha")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la programacion del lider.",
+        ) from exc
+
+    filas_prog = prog_resp.data or []
+    if not filas_prog:
+        return {
+            "lider_id": lider_id,
+            "stints": [],
+            "sites_completados_historico": 0,
+            "promedio_dias_por_site": None,
+            "porcentaje_promedio_historico": None,
+            "dias_no_disponible_mes": _contar_no_disponibles_mes(lider_id),
+        }
+
+    # Agrupa en tramos: filas consecutivas (en orden de fecha) con el
+    # mismo trabajo_id. Un hueco de dias (fin de semana sin fila en
+    # programacion) NO cierra el tramo -- mismo criterio que
+    # "dias_en_sitio" en obtener_vista_trabajos_por_fecha, que tampoco
+    # resetea el contador por un hueco; solo un cambio de site lo cierra.
+    tramos: list[dict] = []
+    tramo_actual: dict | None = None
+    for fila in filas_prog:
+        fecha_obj = date.fromisoformat(fila["fecha"])
+        if tramo_actual and tramo_actual["trabajo_id"] == fila["trabajo_id"]:
+            tramo_actual["fecha_fin"] = fecha_obj
+        else:
+            if tramo_actual:
+                tramos.append(tramo_actual)
+            tramo_actual = {
+                "trabajo_id": fila["trabajo_id"],
+                "fecha_inicio": fecha_obj,
+                "fecha_fin": fecha_obj,
+            }
+    if tramo_actual:
+        tramos.append(tramo_actual)
+
+    hoy = datetime.now(ZONA_COLOMBIA).date()
+    for tramo in tramos:
+        tramo["es_actual"] = tramo["fecha_fin"] >= hoy
+
+    trabajo_ids = list({t["trabajo_id"] for t in tramos})
+
+    try:
+        trabajos_resp = (
+            supabase.table("trabajos")
+            .select("id, site, zona, actividades(id, qty)")
+            .in_("id", trabajo_ids)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los sites del lider.",
+        ) from exc
+    trabajo_por_id = {t["id"]: t for t in trabajos_resp.data or []}
+
+    try:
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select("trabajo_id, created_at, avances_diarios_detalle(actividad_id, cantidad)")
+            .in_("trabajo_id", trabajo_ids)
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances del lider.",
+        ) from exc
+
+    avances_por_trabajo: dict[str, list[dict]] = {}
+    for avance in avances_resp.data or []:
+        avances_por_trabajo.setdefault(avance["trabajo_id"], []).append(avance)
+
+    stints_salida: list[dict] = []
+    dias_historicos: list[int] = []
+    porcentajes_historicos: list[int] = []
+    for tramo in tramos:
+        trabajo = trabajo_por_id.get(tramo["trabajo_id"])
+        if not trabajo:
+            continue
+
+        qtys: dict[str, float] = {}
+        for act in trabajo.get("actividades") or []:
+            try:
+                qtys[act["id"]] = float(act["qty"])
+            except (TypeError, ValueError):
+                continue
+        qty_total = sum(qtys.values())
+
+        # Acumulado de avance de ese trabajo hasta el ultimo dia del
+        # tramo (para saber en cuanto % quedo cuando el lider lo dejo).
+        acumulado: dict[str, float] = {}
+        for avance in avances_por_trabajo.get(tramo["trabajo_id"], []):
+            fecha_avance = (
+                _parsear_timestamptz(avance["created_at"]).astimezone(ZONA_COLOMBIA).date()
+            )
+            if fecha_avance > tramo["fecha_fin"]:
+                continue
+            for detalle in avance.get("avances_diarios_detalle") or []:
+                acumulado[detalle["actividad_id"]] = (
+                    acumulado.get(detalle["actividad_id"], 0) + detalle["cantidad"]
+                )
+
+        if qty_total > 0:
+            acumulado_total = sum(min(acumulado.get(aid, 0), qmax) for aid, qmax in qtys.items())
+            porcentaje = round((acumulado_total / qty_total) * 100)
+        else:
+            porcentaje = None
+
+        dias = (tramo["fecha_fin"] - tramo["fecha_inicio"]).days + 1
+
+        stints_salida.append(
+            {
+                "trabajo_id": tramo["trabajo_id"],
+                "site": trabajo["site"],
+                "zona": trabajo["zona"],
+                "fecha_inicio": tramo["fecha_inicio"].isoformat(),
+                "fecha_fin": tramo["fecha_fin"].isoformat(),
+                "dias": dias,
+                "porcentaje_final": porcentaje,
+                "es_actual": tramo["es_actual"],
+            }
+        )
+
+        if not tramo["es_actual"]:
+            dias_historicos.append(dias)
+            if porcentaje is not None:
+                porcentajes_historicos.append(porcentaje)
+
+    stints_salida.sort(key=lambda s: s["fecha_inicio"])
+
+    promedio_dias = (
+        round(sum(dias_historicos) / len(dias_historicos), 1) if dias_historicos else None
+    )
+    promedio_pct = (
+        round(sum(porcentajes_historicos) / len(porcentajes_historicos))
+        if porcentajes_historicos
+        else None
+    )
+
+    return {
+        "lider_id": lider_id,
+        "stints": stints_salida,
+        "sites_completados_historico": len(dias_historicos),
+        "promedio_dias_por_site": promedio_dias,
+        "porcentaje_promedio_historico": promedio_pct,
+        "dias_no_disponible_mes": _contar_no_disponibles_mes(lider_id),
+    }
 
 
 @app.get("/api/admin/linea-tiempo", response_model=list[LineaTiempoItem])

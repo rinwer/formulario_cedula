@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
-import { AvanceDiarioAdmin, TendenciaSite } from "../types";
+import { AvanceDiarioAdmin, LiderHistorial, TendenciaSite } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -156,6 +156,11 @@ export default function DashboardPanel() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [liderSeleccionado, setLiderSeleccionado] = useState<AvanceDiarioAdmin | null>(null);
+  const [historial, setHistorial] = useState<LiderHistorial | null>(null);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [errorHistorial, setErrorHistorial] = useState<string | null>(null);
+
   const cargar = async (fechaConsulta: string) => {
     setCargando(true);
     setError(null);
@@ -205,6 +210,31 @@ export default function DashboardPanel() {
     cargar(fecha);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  const abrirHistorial = async (fila: AvanceDiarioAdmin) => {
+    if (!fila.lider_id) return;
+    setLiderSeleccionado(fila);
+    setHistorial(null);
+    setErrorHistorial(null);
+    setCargandoHistorial(true);
+    try {
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/dashboard/lider/${fila.lider_id}/historial`
+      );
+      if (!res.ok) throw new Error();
+      setHistorial(await res.json());
+    } catch {
+      setErrorHistorial("No se pudo cargar el historial de este lider.");
+    } finally {
+      setCargandoHistorial(false);
+    }
+  };
+
+  const cerrarHistorial = () => {
+    setLiderSeleccionado(null);
+    setHistorial(null);
+    setErrorHistorial(null);
+  };
 
   const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
     weekday: "long",
@@ -353,9 +383,11 @@ export default function DashboardPanel() {
                       const serie = tendencias[fila.trabajo_id];
                       const estado = calcularEstadoRitmo(fila.actualizado, serie);
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={fila.trabajo_id}
-                          className="border border-slate-200 rounded-lg p-4"
+                          onClick={() => abrirHistorial(fila)}
+                          className="text-left border border-slate-200 rounded-lg p-4 hover:shadow-md hover:-translate-y-0.5 transition-all"
                         >
                           <div className="flex items-center gap-2 mb-1">
                             <span className={"w-1.5 h-1.5 rounded-full shrink-0 " + ESTADO_DOT[estado]} />
@@ -387,7 +419,7 @@ export default function DashboardPanel() {
                               </span>
                             )}
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -397,6 +429,131 @@ export default function DashboardPanel() {
           )}
         </div>
       </div>
+
+      {liderSeleccionado && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-20">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-5 sm:p-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-1">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">
+                  {liderSeleccionado.lider_nombre ?? liderSeleccionado.lider_email ?? "—"}
+                </h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Hoy en {liderSeleccionado.site}
+                  {liderSeleccionado.dias_en_sitio !== null &&
+                    ` · ${liderSeleccionado.dias_en_sitio} dia${
+                      liderSeleccionado.dias_en_sitio === 1 ? "" : "s"
+                    } en el sitio`}
+                  {liderSeleccionado.porcentaje_avance !== null &&
+                    ` · ${liderSeleccionado.porcentaje_avance}%`}
+                </p>
+              </div>
+              <button
+                onClick={cerrarHistorial}
+                aria-label="Cerrar"
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            {errorHistorial && <p className="text-sm text-red-600 mt-4">{errorHistorial}</p>}
+
+            {cargandoHistorial ? (
+              <p className="text-sm text-slate-500 mt-6">Cargando...</p>
+            ) : (
+              historial && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 mb-6">
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <p className="text-xs text-slate-500 mb-1">Sites completados</p>
+                      <p className="text-xl font-semibold text-slate-800">
+                        {historial.sites_completados_historico}
+                      </p>
+                    </div>
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <p className="text-xs text-slate-500 mb-1">Promedio dias / site</p>
+                      <p className="text-xl font-semibold text-slate-800">
+                        {historial.promedio_dias_por_site === null
+                          ? "—"
+                          : historial.promedio_dias_por_site}
+                      </p>
+                    </div>
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <p className="text-xs text-slate-500 mb-1">% avance promedio</p>
+                      <p className="text-xl font-semibold text-slate-800">
+                        {historial.porcentaje_promedio_historico === null
+                          ? "—"
+                          : `${historial.porcentaje_promedio_historico}%`}
+                      </p>
+                    </div>
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <p className="text-xs text-slate-500 mb-1">Dias no disponible (mes)</p>
+                      <p className="text-xl font-semibold text-slate-800">
+                        {historial.dias_no_disponible_mes}
+                      </p>
+                    </div>
+                  </div>
+
+                  <h4 className="text-sm font-semibold text-slate-700 mb-3">
+                    Dias por site (historico)
+                  </h4>
+                  {(() => {
+                    const historicos = historial.stints.filter((s) => !s.es_actual);
+                    if (historicos.length === 0) {
+                      return (
+                        <p className="text-sm text-slate-500">
+                          Todavia no ha completado ningun site.
+                        </p>
+                      );
+                    }
+                    const maxDias = Math.max(...historicos.map((s) => s.dias));
+                    const promedio = historial.promedio_dias_por_site ?? 0;
+                    return (
+                      <div className="flex flex-col gap-2.5">
+                        {historicos.map((stint) => {
+                          const esCuello =
+                            historicos.length >= 2 && promedio > 0 && stint.dias > promedio * 1.5;
+                          return (
+                            <div key={`${stint.trabajo_id}-${stint.fecha_inicio}`} className="flex items-center gap-4">
+                              <span
+                                className={
+                                  "w-36 shrink-0 text-sm truncate " +
+                                  (esCuello ? "font-semibold text-red-700" : "text-slate-700")
+                                }
+                                title={stint.site}
+                              >
+                                {stint.site}
+                              </span>
+                              <div className="flex-1 h-3.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={
+                                    "h-full rounded-full " + (esCuello ? "bg-red-600" : "bg-slate-400")
+                                  }
+                                  style={{ width: `${(stint.dias / maxDias) * 100}%` }}
+                                />
+                              </div>
+                              <span
+                                className={
+                                  "w-28 shrink-0 text-xs text-right " +
+                                  (esCuello ? "font-semibold text-red-700" : "text-slate-500")
+                                }
+                              >
+                                {stint.dias} dia{stint.dias === 1 ? "" : "s"}
+                                {stint.porcentaje_final !== null && ` · ${stint.porcentaje_final}%`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </>
+              )
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
