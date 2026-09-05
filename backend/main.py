@@ -2594,17 +2594,16 @@ def obtener_historial_lider(
     lider_id: str,
     _admin: UsuarioActual = Depends(requerir_staff),
 ) -> dict:
-    """Reconstruye, a partir de la tabla programacion, cada 'estadia' de
-    un lider (tramo de dias consecutivos en el mismo site), para mostrar
-    cuanto duro cada site y con que % de avance cerro. El tramo cuya
-    ultima fecha es hoy o futura se marca como 'actual' y no cuenta para
-    los promedios historicos (todavia esta en curso)."""
+    """Reconstruye cada 'estadia' de un lider (tramo de dias consecutivos
+    en el mismo site) para mostrar cuanto duro cada site y con que % de
+    avance cerro. El tramo cuya ultima fecha es hoy o futura se marca
+    como 'actual' y no cuenta para los promedios historicos (todavia
+    esta en curso)."""
     try:
         prog_resp = (
             supabase.table("programacion")
             .select("trabajo_id, fecha")
             .eq("lider_id", lider_id)
-            .order("fecha")
             .execute()
         )
     except Exception as exc:
@@ -2613,8 +2612,36 @@ def obtener_historial_lider(
             detail="Error interno al obtener la programacion del lider.",
         ) from exc
 
-    filas_prog = prog_resp.data or []
-    if not filas_prog:
+    trabajo_por_fecha: dict[str, str] = {
+        fila["fecha"]: fila["trabajo_id"] for fila in prog_resp.data or []
+    }
+
+    # Respaldo: dias en que el lider reporto avance pero no tenia fila en
+    # programacion (historial de antes de que la Programacion se
+    # empezara a usar de forma consistente para el, o un reporte
+    # suelto). Mismo criterio que obtener_vista_trabajos_por_fecha y
+    # obtener_linea_tiempo: programacion manda, esto solo llena huecos.
+    try:
+        avances_lider_resp = (
+            supabase.table("avances_diarios")
+            .select("trabajo_id, created_at")
+            .eq("lider_id", lider_id)
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances del lider.",
+        ) from exc
+
+    for avance in avances_lider_resp.data or []:
+        fecha_avance = (
+            _parsear_timestamptz(avance["created_at"]).astimezone(ZONA_COLOMBIA).date().isoformat()
+        )
+        trabajo_por_fecha.setdefault(fecha_avance, avance["trabajo_id"])
+
+    if not trabajo_por_fecha:
         return {
             "lider_id": lider_id,
             "stints": [],
@@ -2624,22 +2651,23 @@ def obtener_historial_lider(
             "dias_no_disponible_mes": _contar_no_disponibles_mes(lider_id),
         }
 
-    # Agrupa en tramos: filas consecutivas (en orden de fecha) con el
-    # mismo trabajo_id. Un hueco de dias (fin de semana sin fila en
-    # programacion) NO cierra el tramo -- mismo criterio que
-    # "dias_en_sitio" en obtener_vista_trabajos_por_fecha, que tampoco
-    # resetea el contador por un hueco; solo un cambio de site lo cierra.
+    # Agrupa en tramos: fechas consecutivas (en orden) con el mismo
+    # trabajo_id. Un hueco de dias (fin de semana sin fila ni avance) NO
+    # cierra el tramo -- mismo criterio que "dias_en_sitio" en
+    # obtener_vista_trabajos_por_fecha, que tampoco resetea el contador
+    # por un hueco; solo un cambio de site lo cierra.
     tramos: list[dict] = []
     tramo_actual: dict | None = None
-    for fila in filas_prog:
-        fecha_obj = date.fromisoformat(fila["fecha"])
-        if tramo_actual and tramo_actual["trabajo_id"] == fila["trabajo_id"]:
+    for fecha_iso in sorted(trabajo_por_fecha.keys()):
+        trabajo_id = trabajo_por_fecha[fecha_iso]
+        fecha_obj = date.fromisoformat(fecha_iso)
+        if tramo_actual and tramo_actual["trabajo_id"] == trabajo_id:
             tramo_actual["fecha_fin"] = fecha_obj
         else:
             if tramo_actual:
                 tramos.append(tramo_actual)
             tramo_actual = {
-                "trabajo_id": fila["trabajo_id"],
+                "trabajo_id": trabajo_id,
                 "fecha_inicio": fecha_obj,
                 "fecha_fin": fecha_obj,
             }
