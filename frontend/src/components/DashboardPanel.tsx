@@ -125,24 +125,44 @@ function calcularEstadoRitmo(actualizado: boolean, serie: TendenciaSite | undefi
 // Sparkline en escala fija 0-100% (no autoescalado): asi una linea plana
 // en 20% y una en 90% no se ven igual de "activas" solo por el rango de
 // datos que les toco.
-function Sparkline({ serie, color }: { serie: TendenciaSite | undefined; color: string }) {
+function Sparkline({
+  serie,
+  color,
+  ancho = 72,
+  alto = 24,
+}: {
+  serie: TendenciaSite | undefined;
+  color: string;
+  ancho?: number;
+  alto?: number;
+}) {
   const valores = (serie?.serie ?? [])
     .map((p) => p.porcentaje)
     .filter((p): p is number => p !== null);
+  const margen = 2;
 
   if (valores.length < 2) {
     return (
-      <svg width="72" height="24" viewBox="0 0 72 24" fill="none">
-        <line x1="0" y1="20" x2="72" y2="20" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+      <svg width={ancho} height={alto} viewBox={`0 0 ${ancho} ${alto}`} fill="none">
+        <line
+          x1="0"
+          y1={alto - margen}
+          x2={ancho}
+          y2={alto - margen}
+          stroke="#e2e8f0"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
 
-  const paso = 72 / (valores.length - 1);
-  const puntos = valores.map((v, i) => `${i * paso},${22 - (v / 100) * 20}`).join(" ");
+  const paso = ancho / (valores.length - 1);
+  const escala = alto - margen * 2;
+  const puntos = valores.map((v, i) => `${i * paso},${margen + escala - (v / 100) * escala}`).join(" ");
 
   return (
-    <svg width="72" height="24" viewBox="0 0 72 24" fill="none">
+    <svg width={ancho} height={alto} viewBox={`0 0 ${ancho} ${alto}`} fill="none">
       <polyline points={puntos} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -160,6 +180,25 @@ export default function DashboardPanel() {
   const [historial, setHistorial] = useState<LiderHistorial | null>(null);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const [errorHistorial, setErrorHistorial] = useState<string | null>(null);
+
+  const seleccionarLider = async (fila: AvanceDiarioAdmin) => {
+    if (!fila.lider_id) return;
+    setLiderSeleccionado(fila);
+    setHistorial(null);
+    setErrorHistorial(null);
+    setCargandoHistorial(true);
+    try {
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/dashboard/lider/${fila.lider_id}/historial`
+      );
+      if (!res.ok) throw new Error();
+      setHistorial(await res.json());
+    } catch {
+      setErrorHistorial("No se pudo cargar el historial de este lider.");
+    } finally {
+      setCargandoHistorial(false);
+    }
+  };
 
   const cargar = async (fechaConsulta: string) => {
     setCargando(true);
@@ -180,7 +219,9 @@ export default function DashboardPanel() {
       setFilas(data);
       setFilasAyer(resAyer.ok ? await resAyer.json() : null);
 
-      const idsConLider = data.filter((f) => f.lider_id).map((f) => f.trabajo_id);
+      const filasConLiderNuevas = data.filter((f) => f.lider_id);
+      const idsConLider = filasConLiderNuevas.map((f) => f.trabajo_id);
+      let tendenciasNuevas: Record<string, TendenciaSite> = {};
       if (idsConLider.length > 0) {
         const parametrosTendencia = new URLSearchParams({
           trabajo_ids: idsConLider.join(","),
@@ -191,13 +232,25 @@ export default function DashboardPanel() {
           `${API_URL}/api/admin/dashboard/tendencias?${parametrosTendencia.toString()}`
         );
         if (resTendencias.ok) {
-          const data: TendenciaSite[] = await resTendencias.json();
-          setTendencias(Object.fromEntries(data.map((t) => [t.trabajo_id, t])));
-        } else {
-          setTendencias({});
+          const tendenciasData: TendenciaSite[] = await resTendencias.json();
+          tendenciasNuevas = Object.fromEntries(tendenciasData.map((t) => [t.trabajo_id, t]));
         }
+      }
+      setTendencias(tendenciasNuevas);
+
+      // Selecciona por defecto a quien mas atencion necesita (estancado
+      // primero, luego sin actualizar), en vez de dejar el panel vacio.
+      if (filasConLiderNuevas.length > 0) {
+        const prioridad: Record<EstadoRitmo, number> = { rojo: 0, ambar: 1, verde: 2 };
+        const ordenadasPorPrioridad = [...filasConLiderNuevas].sort(
+          (a, b) =>
+            prioridad[calcularEstadoRitmo(a.actualizado, tendenciasNuevas[a.trabajo_id])] -
+            prioridad[calcularEstadoRitmo(b.actualizado, tendenciasNuevas[b.trabajo_id])]
+        );
+        seleccionarLider(ordenadasPorPrioridad[0]);
       } else {
-        setTendencias({});
+        setLiderSeleccionado(null);
+        setHistorial(null);
       }
     } catch {
       setError("No se pudo cargar el resumen de ese dia.");
@@ -210,31 +263,6 @@ export default function DashboardPanel() {
     cargar(fecha);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
-
-  const abrirHistorial = async (fila: AvanceDiarioAdmin) => {
-    if (!fila.lider_id) return;
-    setLiderSeleccionado(fila);
-    setHistorial(null);
-    setErrorHistorial(null);
-    setCargandoHistorial(true);
-    try {
-      const res = await fetchAutenticado(
-        `${API_URL}/api/admin/dashboard/lider/${fila.lider_id}/historial`
-      );
-      if (!res.ok) throw new Error();
-      setHistorial(await res.json());
-    } catch {
-      setErrorHistorial("No se pudo cargar el historial de este lider.");
-    } finally {
-      setCargandoHistorial(false);
-    }
-  };
-
-  const cerrarHistorial = () => {
-    setLiderSeleccionado(null);
-    setHistorial(null);
-    setErrorHistorial(null);
-  };
 
   const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
     weekday: "long",
@@ -378,50 +406,190 @@ export default function DashboardPanel() {
                 {filasLiderOrdenadas.length === 0 ? (
                   <p className="text-sm text-slate-500">Nadie tiene sites programados esta fecha.</p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {filasLiderOrdenadas.map((fila) => {
-                      const serie = tendencias[fila.trabajo_id];
-                      const estado = calcularEstadoRitmo(fila.actualizado, serie);
-                      return (
-                        <button
-                          type="button"
-                          key={fila.trabajo_id}
-                          onClick={() => abrirHistorial(fila)}
-                          className="text-left border border-slate-200 rounded-lg p-4 hover:shadow-md hover:-translate-y-0.5 transition-all"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={"w-1.5 h-1.5 rounded-full shrink-0 " + ESTADO_DOT[estado]} />
-                            <span className="text-sm font-semibold text-slate-800 truncate">
-                              {fila.lider_nombre ?? fila.lider_email ?? "—"}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 mb-0.5 truncate">{fila.site}</p>
-                          <p className="text-[11px] text-slate-400 mb-2.5">
-                            {fila.dias_en_sitio === null
-                              ? "—"
-                              : `${fila.dias_en_sitio} dia${fila.dias_en_sitio === 1 ? "" : "s"} en el sitio`}
-                            {estado === "rojo" && (
-                              <span className="text-red-700 font-medium"> &middot; estancado</span>
-                            )}
-                          </p>
-                          <div className="flex items-end justify-between">
-                            <Sparkline serie={serie} color={ESTADO_STROKE[estado]} />
-                            {fila.porcentaje_avance === null ? (
-                              <span className="text-lg font-semibold text-slate-400">—</span>
-                            ) : (
-                              <span
-                                className={
-                                  "text-lg font-semibold " +
-                                  (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-800")
-                                }
-                              >
-                                {fila.porcentaje_avance}%
+                  <div className="flex flex-col lg:flex-row gap-4">
+                    <div className="w-full lg:w-72 shrink-0 flex flex-col gap-2">
+                      {filasLiderOrdenadas.map((fila) => {
+                        const serie = tendencias[fila.trabajo_id];
+                        const estado = calcularEstadoRitmo(fila.actualizado, serie);
+                        const seleccionado = liderSeleccionado?.trabajo_id === fila.trabajo_id;
+                        return (
+                          <button
+                            type="button"
+                            key={fila.trabajo_id}
+                            onClick={() => seleccionarLider(fila)}
+                            className={
+                              "text-left rounded-lg border px-3 py-2.5 transition-colors " +
+                              (seleccionado
+                                ? "border-cobre-400 bg-cobre-50"
+                                : "border-slate-200 hover:border-slate-300")
+                            }
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={"w-1.5 h-1.5 rounded-full shrink-0 " + ESTADO_DOT[estado]} />
+                              <span className="text-sm font-semibold text-slate-800 truncate flex-1">
+                                {fila.lider_nombre ?? fila.lider_email ?? "—"}
                               </span>
-                            )}
+                              {fila.porcentaje_avance !== null && (
+                                <span
+                                  className={
+                                    "text-xs font-semibold shrink-0 " +
+                                    (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-500")
+                                  }
+                                >
+                                  {fila.porcentaje_avance}%
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500 truncate mt-0.5">
+                              {fila.site}
+                              {estado === "rojo" && (
+                                <span className="text-red-700 font-medium"> &middot; estancado</span>
+                              )}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex-1 border border-slate-200 rounded-lg p-5 min-w-0">
+                      {!liderSeleccionado ? (
+                        <p className="text-sm text-slate-500">Selecciona un lider para ver su detalle.</p>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-4 mb-1">
+                            <div>
+                              <h3 className="text-lg font-semibold text-slate-800">
+                                {liderSeleccionado.lider_nombre ?? liderSeleccionado.lider_email ?? "—"}
+                              </h3>
+                              <p className="text-sm text-slate-500 mt-0.5">
+                                Hoy en {liderSeleccionado.site}
+                                {liderSeleccionado.dias_en_sitio !== null &&
+                                  ` · ${liderSeleccionado.dias_en_sitio} dia${
+                                    liderSeleccionado.dias_en_sitio === 1 ? "" : "s"
+                                  } en el sitio`}
+                                {liderSeleccionado.porcentaje_avance !== null &&
+                                  ` · ${liderSeleccionado.porcentaje_avance}%`}
+                              </p>
+                            </div>
+                            <Sparkline
+                              serie={tendencias[liderSeleccionado.trabajo_id]}
+                              color={
+                                ESTADO_STROKE[
+                                  calcularEstadoRitmo(
+                                    liderSeleccionado.actualizado,
+                                    tendencias[liderSeleccionado.trabajo_id]
+                                  )
+                                ]
+                              }
+                              ancho={140}
+                              alto={40}
+                            />
                           </div>
-                        </button>
-                      );
-                    })}
+
+                          {errorHistorial && <p className="text-sm text-red-600 mt-4">{errorHistorial}</p>}
+
+                          {cargandoHistorial ? (
+                            <p className="text-sm text-slate-500 mt-6">Cargando...</p>
+                          ) : (
+                            historial && (
+                              <>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 mb-6">
+                                  <div className="border border-slate-200 rounded-lg p-3">
+                                    <p className="text-xs text-slate-500 mb-1">Sites completados</p>
+                                    <p className="text-xl font-semibold text-slate-800">
+                                      {historial.sites_completados_historico}
+                                    </p>
+                                  </div>
+                                  <div className="border border-slate-200 rounded-lg p-3">
+                                    <p className="text-xs text-slate-500 mb-1">Promedio dias / site</p>
+                                    <p className="text-xl font-semibold text-slate-800">
+                                      {historial.promedio_dias_por_site === null
+                                        ? "—"
+                                        : historial.promedio_dias_por_site}
+                                    </p>
+                                  </div>
+                                  <div className="border border-slate-200 rounded-lg p-3">
+                                    <p className="text-xs text-slate-500 mb-1">% avance promedio</p>
+                                    <p className="text-xl font-semibold text-slate-800">
+                                      {historial.porcentaje_promedio_historico === null
+                                        ? "—"
+                                        : `${historial.porcentaje_promedio_historico}%`}
+                                    </p>
+                                  </div>
+                                  <div className="border border-slate-200 rounded-lg p-3">
+                                    <p className="text-xs text-slate-500 mb-1">Dias no disponible (mes)</p>
+                                    <p className="text-xl font-semibold text-slate-800">
+                                      {historial.dias_no_disponible_mes}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <h4 className="text-sm font-semibold text-slate-700 mb-1">
+                                  Dias por site (historico)
+                                </h4>
+                                <p className="text-xs text-slate-400 mb-3">
+                                  No incluye el site actual (todavia en curso, arriba).
+                                </p>
+                                {(() => {
+                                  const historicos = historial.stints.filter((s) => !s.es_actual);
+                                  if (historicos.length === 0) {
+                                    return (
+                                      <p className="text-sm text-slate-500">
+                                        Todavia no ha completado ningun site.
+                                      </p>
+                                    );
+                                  }
+                                  const maxDias = Math.max(...historicos.map((s) => s.dias));
+                                  const promedio = historial.promedio_dias_por_site ?? 0;
+                                  return (
+                                    <div className="flex flex-col gap-2.5">
+                                      {historicos.map((stint) => {
+                                        const esCuello =
+                                          historicos.length >= 2 && promedio > 0 && stint.dias > promedio * 1.5;
+                                        return (
+                                          <div
+                                            key={`${stint.trabajo_id}-${stint.fecha_inicio}`}
+                                            className="flex items-center gap-4"
+                                          >
+                                            <span
+                                              className={
+                                                "w-36 shrink-0 text-sm truncate " +
+                                                (esCuello ? "font-semibold text-red-700" : "text-slate-700")
+                                              }
+                                              title={stint.site}
+                                            >
+                                              {stint.site}
+                                            </span>
+                                            <div className="flex-1 h-3.5 bg-slate-100 rounded-full overflow-hidden">
+                                              <div
+                                                className={
+                                                  "h-full rounded-full " +
+                                                  (esCuello ? "bg-red-600" : "bg-slate-400")
+                                                }
+                                                style={{ width: `${(stint.dias / maxDias) * 100}%` }}
+                                              />
+                                            </div>
+                                            <span
+                                              className={
+                                                "w-28 shrink-0 text-xs text-right " +
+                                                (esCuello ? "font-semibold text-red-700" : "text-slate-500")
+                                              }
+                                            >
+                                              {stint.dias} dia{stint.dias === 1 ? "" : "s"}
+                                              {stint.porcentaje_final !== null && ` · ${stint.porcentaje_final}%`}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
+                              </>
+                            )
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -429,134 +597,6 @@ export default function DashboardPanel() {
           )}
         </div>
       </div>
-
-      {liderSeleccionado && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-20">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-5 sm:p-6 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-start justify-between mb-1">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800">
-                  {liderSeleccionado.lider_nombre ?? liderSeleccionado.lider_email ?? "—"}
-                </h3>
-                <p className="text-sm text-slate-500 mt-0.5">
-                  Hoy en {liderSeleccionado.site}
-                  {liderSeleccionado.dias_en_sitio !== null &&
-                    ` · ${liderSeleccionado.dias_en_sitio} dia${
-                      liderSeleccionado.dias_en_sitio === 1 ? "" : "s"
-                    } en el sitio`}
-                  {liderSeleccionado.porcentaje_avance !== null &&
-                    ` · ${liderSeleccionado.porcentaje_avance}%`}
-                </p>
-              </div>
-              <button
-                onClick={cerrarHistorial}
-                aria-label="Cerrar"
-                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
-              >
-                ✕
-              </button>
-            </div>
-
-            {errorHistorial && <p className="text-sm text-red-600 mt-4">{errorHistorial}</p>}
-
-            {cargandoHistorial ? (
-              <p className="text-sm text-slate-500 mt-6">Cargando...</p>
-            ) : (
-              historial && (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 mb-6">
-                    <div className="border border-slate-200 rounded-lg p-3">
-                      <p className="text-xs text-slate-500 mb-1">Sites completados</p>
-                      <p className="text-xl font-semibold text-slate-800">
-                        {historial.sites_completados_historico}
-                      </p>
-                    </div>
-                    <div className="border border-slate-200 rounded-lg p-3">
-                      <p className="text-xs text-slate-500 mb-1">Promedio dias / site</p>
-                      <p className="text-xl font-semibold text-slate-800">
-                        {historial.promedio_dias_por_site === null
-                          ? "—"
-                          : historial.promedio_dias_por_site}
-                      </p>
-                    </div>
-                    <div className="border border-slate-200 rounded-lg p-3">
-                      <p className="text-xs text-slate-500 mb-1">% avance promedio</p>
-                      <p className="text-xl font-semibold text-slate-800">
-                        {historial.porcentaje_promedio_historico === null
-                          ? "—"
-                          : `${historial.porcentaje_promedio_historico}%`}
-                      </p>
-                    </div>
-                    <div className="border border-slate-200 rounded-lg p-3">
-                      <p className="text-xs text-slate-500 mb-1">Dias no disponible (mes)</p>
-                      <p className="text-xl font-semibold text-slate-800">
-                        {historial.dias_no_disponible_mes}
-                      </p>
-                    </div>
-                  </div>
-
-                  <h4 className="text-sm font-semibold text-slate-700 mb-1">
-                    Dias por site (historico)
-                  </h4>
-                  <p className="text-xs text-slate-400 mb-3">
-                    No incluye el site actual (todavia en curso, arriba).
-                  </p>
-                  {(() => {
-                    const historicos = historial.stints.filter((s) => !s.es_actual);
-                    if (historicos.length === 0) {
-                      return (
-                        <p className="text-sm text-slate-500">
-                          Todavia no ha completado ningun site.
-                        </p>
-                      );
-                    }
-                    const maxDias = Math.max(...historicos.map((s) => s.dias));
-                    const promedio = historial.promedio_dias_por_site ?? 0;
-                    return (
-                      <div className="flex flex-col gap-2.5">
-                        {historicos.map((stint) => {
-                          const esCuello =
-                            historicos.length >= 2 && promedio > 0 && stint.dias > promedio * 1.5;
-                          return (
-                            <div key={`${stint.trabajo_id}-${stint.fecha_inicio}`} className="flex items-center gap-4">
-                              <span
-                                className={
-                                  "w-36 shrink-0 text-sm truncate " +
-                                  (esCuello ? "font-semibold text-red-700" : "text-slate-700")
-                                }
-                                title={stint.site}
-                              >
-                                {stint.site}
-                              </span>
-                              <div className="flex-1 h-3.5 bg-slate-100 rounded-full overflow-hidden">
-                                <div
-                                  className={
-                                    "h-full rounded-full " + (esCuello ? "bg-red-600" : "bg-slate-400")
-                                  }
-                                  style={{ width: `${(stint.dias / maxDias) * 100}%` }}
-                                />
-                              </div>
-                              <span
-                                className={
-                                  "w-28 shrink-0 text-xs text-right " +
-                                  (esCuello ? "font-semibold text-red-700" : "text-slate-500")
-                                }
-                              >
-                                {stint.dias} dia{stint.dias === 1 ? "" : "s"}
-                                {stint.porcentaje_final !== null && ` · ${stint.porcentaje_final}%`}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </>
-              )
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
