@@ -99,3 +99,9 @@ export type Disponibilidad = {
   lider_id: string;
   motivo: string | null;
 };
+
+export type SiteLigero = {
+  id: string;
+  site: string;
+  zona: string;
+};

@@ -6,6 +6,7 @@ Unico responsable de hablar con Supabase con la service_role key.
 import csv
 import io
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from openpyxl import Workbook
+from openpyxl.styles import Font
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from supabase import Client, create_client
 
@@ -47,6 +49,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Sin esto, el navegador no deja leer este header desde JS en un fetch
+    # cross-origin (como en desarrollo local, frontend en :5173 contra el
+    # backend en :8000): lo necesita la descarga de /api/admin/daily/exportar
+    # para nombrar el archivo con el nombre que arma el backend.
+    expose_headers=["Content-Disposition"],
 )
 
 bearer_scheme = HTTPBearer(auto_error=True)
@@ -193,6 +200,12 @@ class LiderOut(BaseModel):
     id: str
     nombre_completo: str
     activo: bool = True
+
+
+class SiteOut(BaseModel):
+    id: str
+    site: str
+    zona: str
 
 
 class PerfilUpdate(BaseModel):
@@ -576,6 +589,25 @@ def listar_lideres(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al obtener los lideres.",
+        ) from exc
+
+    return response.data or []
+
+
+@app.get("/api/admin/sites", response_model=list[SiteOut])
+def listar_sites(
+    _admin: UsuarioActual = Depends(requerir_acceso_daily),
+) -> list[dict]:
+    """Lista liviana de sites (id de trabajo, site y zona), sin id_smp ni
+    lider, para el buscador de 'exportar historial de un site' del Daily
+    (accesible tambien para visualizador, a diferencia de
+    /api/admin/trabajos que sigue restringido a administrador/coordinador)."""
+    try:
+        response = supabase.table("trabajos").select("id, site, zona").execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los sites.",
         ) from exc
 
     return response.data or []
@@ -2045,34 +2077,18 @@ def listar_avances_diarios_admin(
 MAX_DIAS_EXPORTACION_DAILY = 31
 
 
-@app.get("/api/admin/daily/exportar")
-def exportar_daily(
-    desde: str = Query(..., description="YYYY-MM-DD"),
-    hasta: str = Query(..., description="YYYY-MM-DD"),
-    _admin: UsuarioActual = Depends(requerir_acceso_daily),
-) -> StreamingResponse:
-    """Exporta a un .xlsx (una sola hoja) lo mismo que muestra el Daily en
-    pantalla, para cada dia del rango [desde, hasta]: una fila por
-    trabajo programado ese dia, mas una fila por cada lider marcado como
-    no disponible ese dia. Reutiliza obtener_vista_trabajos_por_fecha
-    dia por dia (mismo criterio exacto que la vista en pantalla), asi que
-    el rango se limita a un mes para no disparar demasiadas consultas
-    seguidas a Supabase en una sola peticion."""
-    try:
-        desde_obj = date.fromisoformat(desde)
-        hasta_obj = date.fromisoformat(hasta)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
-        ) from exc
+def _sanear_nombre_archivo(texto: str) -> str:
+    """Reemplaza espacios y caracteres raros por guion bajo, para poder
+    usar un site/lider como parte del nombre del .xlsx descargado."""
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", texto).strip("_") or "export"
 
-    if hasta_obj < desde_obj:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="'hasta' no puede ser anterior a 'desde'.",
-        )
 
+def _filas_export_rango(desde_obj: date, hasta_obj: date, lider_id: str | None) -> list[list]:
+    """Una fila por trabajo programado en cada dia del rango (mismo
+    criterio que el Daily en pantalla), mas una fila por cada lider
+    marcado como no disponible ese dia. Si se indica lider_id, se
+    descartan las filas de cualquier otro lider (tanto trabajos como no
+    disponibles), para exportar solo lo de ese lider en el rango."""
     if (hasta_obj - desde_obj).days + 1 > MAX_DIAS_EXPORTACION_DAILY:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2095,6 +2111,8 @@ def exportar_daily(
 
     no_disponibles_por_fecha: dict[str, list[dict]] = {}
     for fila in disponibilidad_resp.data or []:
+        if lider_id and fila["lider_id"] != lider_id:
+            continue
         perfil_lider = fila.get("lider") or {}
         no_disponibles_por_fecha.setdefault(fila["fecha"], []).append(
             {
@@ -2103,22 +2121,18 @@ def exportar_daily(
             }
         )
 
-    libro = Workbook()
-    hoja = libro.active
-    hoja.title = "Daily"
-    hoja.append(
-        ["Fecha", "Site", "Zona", "Lider", "Actualizo", "% Avance", "Avance del dia", "Comentario"]
-    )
-
+    filas_hoja: list[list] = []
     fecha_actual = desde_obj
     while fecha_actual <= hasta_obj:
         fecha_iso = fecha_actual.isoformat()
         for fila in obtener_vista_trabajos_por_fecha(fecha_actual, solo_programados=True):
+            if lider_id and fila["lider_id"] != lider_id:
+                continue
             detalle = " · ".join(
                 f"{d['hw_actividad'] or d['actividad'] or '—'}: {d['cantidad']}"
                 for d in fila["detalle"]
             )
-            hoja.append(
+            filas_hoja.append(
                 [
                     fecha_iso,
                     fila["site"],
@@ -2131,7 +2145,7 @@ def exportar_daily(
                 ]
             )
         for no_disponible in no_disponibles_por_fecha.get(fecha_iso, []):
-            hoja.append(
+            filas_hoja.append(
                 [
                     fecha_iso,
                     "—",
@@ -2145,6 +2159,203 @@ def exportar_daily(
             )
         fecha_actual += timedelta(days=1)
 
+    return filas_hoja
+
+
+def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
+    """Todo el historial de avances de un site (cualquier fecha en que
+    haya reportado algo), con el % acumulado a cada fecha. A diferencia
+    de _filas_export_rango, no itera dia por dia: trae de una sola vez
+    todos los avances_diarios del trabajo y arma las filas en memoria, asi
+    que no importa cuantos meses de historial tenga el site."""
+    try:
+        trabajo_resp = (
+            supabase.table("trabajos")
+            .select("id, site, zona, actividades(id, qty, hw_actividad, actividad)")
+            .eq("id", trabajo_id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No se encontro el trabajo."
+        ) from exc
+
+    trabajo = trabajo_resp.data
+    actividades = trabajo.get("actividades") or []
+    hw_por_actividad = {
+        act["id"]: act.get("hw_actividad") or act.get("actividad") or "—" for act in actividades
+    }
+    qty_por_actividad: dict[str, float] = {}
+    for act in actividades:
+        try:
+            qty_por_actividad[act["id"]] = float(act["qty"])
+        except (TypeError, ValueError):
+            continue
+    qty_total = sum(qty_por_actividad.values())
+
+    try:
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select("id, lider_id, comentario, created_at")
+            .eq("trabajo_id", trabajo_id)
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el historial del site.",
+        ) from exc
+
+    avances = avances_resp.data or []
+    lider_ids = list({a["lider_id"] for a in avances if a.get("lider_id")})
+    perfil_por_lider_id: dict[str, dict] = {}
+    if lider_ids:
+        try:
+            perfiles_resp = (
+                supabase.table("profiles")
+                .select("id, nombre_completo, email")
+                .in_("id", lider_ids)
+                .execute()
+            )
+            perfil_por_lider_id = {p["id"]: p for p in perfiles_resp.data or []}
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener los lideres del historial.",
+            ) from exc
+
+    avance_ids = [a["id"] for a in avances]
+    detalles_por_avance: dict[str, list[dict]] = {}
+    if avance_ids:
+        try:
+            detalles_resp = (
+                supabase.table("avances_diarios_detalle")
+                .select("avance_diario_id, actividad_id, cantidad")
+                .in_("avance_diario_id", avance_ids)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener el detalle del historial.",
+            ) from exc
+        for detalle in detalles_resp.data or []:
+            detalles_por_avance.setdefault(detalle["avance_diario_id"], []).append(detalle)
+
+    acumulado_por_actividad: dict[str, float] = {}
+    filas_hoja: list[list] = []
+    for avance in avances:
+        fecha_local = (
+            _parsear_timestamptz(avance["created_at"]).astimezone(ZONA_COLOMBIA).date().isoformat()
+        )
+        detalle_dia = detalles_por_avance.get(avance["id"], [])
+        detalle_texto = " · ".join(
+            f"{hw_por_actividad.get(d['actividad_id'], '—')}: {d['cantidad']}" for d in detalle_dia
+        )
+        for d in detalle_dia:
+            acumulado_por_actividad[d["actividad_id"]] = (
+                acumulado_por_actividad.get(d["actividad_id"], 0) + d["cantidad"]
+            )
+        acumulado_total = sum(
+            min(acumulado_por_actividad.get(aid, 0), qty_max)
+            for aid, qty_max in qty_por_actividad.items()
+        )
+        porcentaje = round((acumulado_total / qty_total) * 100) if qty_total > 0 else None
+        perfil_lider = perfil_por_lider_id.get(avance.get("lider_id"), {})
+        filas_hoja.append(
+            [
+                fecha_local,
+                trabajo["site"],
+                trabajo["zona"],
+                perfil_lider.get("nombre_completo") or perfil_lider.get("email") or "—",
+                "Actualizado",
+                porcentaje,
+                detalle_texto,
+                avance.get("comentario") or "—",
+            ]
+        )
+
+    return trabajo["site"], filas_hoja
+
+
+@app.get("/api/admin/daily/exportar")
+def exportar_daily(
+    desde: str | None = Query(default=None, description="YYYY-MM-DD"),
+    hasta: str | None = Query(default=None, description="YYYY-MM-DD"),
+    lider_id: str | None = Query(default=None, description="Filtra el rango a un solo lider"),
+    trabajo_id: str | None = Query(
+        default=None,
+        description="Si se indica, exporta todo el historial de ese site e ignora desde/hasta",
+    ),
+    _admin: UsuarioActual = Depends(requerir_acceso_daily),
+) -> StreamingResponse:
+    """Exporta a un .xlsx (una sola hoja) lo mismo que muestra el Daily,
+    en tres modos segun los parametros:
+    - trabajo_id: todo el historial de ese site, cualquier fecha (ignora
+      desde/hasta).
+    - lider_id + desde/hasta: el rango de fechas, pero solo las filas de
+      ese lider (incluye sus dias marcados no disponible).
+    - solo desde/hasta: el rango completo, todos los sites."""
+    if trabajo_id:
+        etiqueta, filas_hoja = _filas_export_historial_site(trabajo_id)
+        nombre_archivo = f"daily_{_sanear_nombre_archivo(etiqueta)}_historial.xlsx"
+    else:
+        if not desde or not hasta:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debes indicar 'desde' y 'hasta', o un 'trabajo_id'.",
+            )
+        try:
+            desde_obj = date.fromisoformat(desde)
+            hasta_obj = date.fromisoformat(hasta)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+            ) from exc
+        if hasta_obj < desde_obj:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="'hasta' no puede ser anterior a 'desde'.",
+            )
+        filas_hoja = _filas_export_rango(desde_obj, hasta_obj, lider_id)
+        if lider_id:
+            # Consulta directa (sin obtener_perfil_lider) porque aca solo se
+            # necesita un nombre para el archivo: un lider deshabilitado o
+            # que ya cambio de rol igual debe poder exportarse.
+            try:
+                perfil_resp = (
+                    supabase.table("profiles")
+                    .select("nombre_completo, email")
+                    .eq("id", lider_id)
+                    .maybe_single()
+                    .execute()
+                )
+            except Exception:
+                perfil_resp = None
+            perfil = perfil_resp.data if perfil_resp else None
+            etiqueta = (perfil and (perfil.get("nombre_completo") or perfil.get("email"))) or lider_id
+            nombre_archivo = f"daily_{_sanear_nombre_archivo(etiqueta)}_{desde}_a_{hasta}.xlsx"
+        else:
+            nombre_archivo = f"daily_{desde}_a_{hasta}.xlsx"
+
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Daily"
+    hoja.append(
+        ["Fecha", "Site", "Zona", "Lider", "Actualizo", "% Avance", "Avance del dia", "Comentario"]
+    )
+    for celda in hoja[1]:
+        celda.font = Font(bold=True)
+
+    for fila in filas_hoja:
+        hoja.append(fila)
+
+    hoja.freeze_panes = "A2"
+    hoja.auto_filter.ref = hoja.dimensions
+
     for columna, ancho in zip("ABCDEFGH", (12, 20, 14, 20, 14, 10, 40, 50)):
         hoja.column_dimensions[columna].width = ancho
 
@@ -2152,7 +2363,6 @@ def exportar_daily(
     libro.save(buffer)
     buffer.seek(0)
 
-    nombre_archivo = f"daily_{desde}_a_{hasta}.xlsx"
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
