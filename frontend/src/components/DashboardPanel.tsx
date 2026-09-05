@@ -101,12 +101,6 @@ const ESTADO_DOT: Record<EstadoRitmo, string> = {
   rojo: "bg-red-500",
 };
 
-const ESTADO_STROKE: Record<EstadoRitmo, string> = {
-  verde: "#059669",
-  ambar: "#b45309",
-  rojo: "#b91c1c",
-};
-
 function calcularEstadoRitmo(actualizado: boolean, serie: TendenciaSite | undefined): EstadoRitmo {
   const valores = (serie?.serie ?? [])
     .map((p) => p.porcentaje)
@@ -120,52 +114,6 @@ function calcularEstadoRitmo(actualizado: boolean, serie: TendenciaSite | undefi
   }
   if (!actualizado) return "ambar";
   return "verde";
-}
-
-// Sparkline en escala fija 0-100% (no autoescalado): asi una linea plana
-// en 20% y una en 90% no se ven igual de "activas" solo por el rango de
-// datos que les toco.
-function Sparkline({
-  serie,
-  color,
-  ancho = 72,
-  alto = 24,
-}: {
-  serie: TendenciaSite | undefined;
-  color: string;
-  ancho?: number;
-  alto?: number;
-}) {
-  const valores = (serie?.serie ?? [])
-    .map((p) => p.porcentaje)
-    .filter((p): p is number => p !== null);
-  const margen = 2;
-
-  if (valores.length < 2) {
-    return (
-      <svg width={ancho} height={alto} viewBox={`0 0 ${ancho} ${alto}`} fill="none">
-        <line
-          x1="0"
-          y1={alto - margen}
-          x2={ancho}
-          y2={alto - margen}
-          stroke="#e2e8f0"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-
-  const paso = ancho / (valores.length - 1);
-  const escala = alto - margen * 2;
-  const puntos = valores.map((v, i) => `${i * paso},${margen + escala - (v / 100) * escala}`).join(" ");
-
-  return (
-    <svg width={ancho} height={alto} viewBox={`0 0 ${ancho} ${alto}`} fill="none">
-      <polyline points={puntos} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 export default function DashboardPanel() {
@@ -456,34 +404,19 @@ export default function DashboardPanel() {
                         <p className="text-sm text-slate-500">Selecciona un lider para ver su detalle.</p>
                       ) : (
                         <>
-                          <div className="flex items-start justify-between gap-4 mb-1">
-                            <div>
-                              <h3 className="text-lg font-semibold text-slate-800">
-                                {liderSeleccionado.lider_nombre ?? liderSeleccionado.lider_email ?? "—"}
-                              </h3>
-                              <p className="text-sm text-slate-500 mt-0.5">
-                                Hoy en {liderSeleccionado.site}
-                                {liderSeleccionado.dias_en_sitio !== null &&
-                                  ` · ${liderSeleccionado.dias_en_sitio} dia${
-                                    liderSeleccionado.dias_en_sitio === 1 ? "" : "s"
-                                  } en el sitio`}
-                                {liderSeleccionado.porcentaje_avance !== null &&
-                                  ` · ${liderSeleccionado.porcentaje_avance}%`}
-                              </p>
-                            </div>
-                            <Sparkline
-                              serie={tendencias[liderSeleccionado.trabajo_id]}
-                              color={
-                                ESTADO_STROKE[
-                                  calcularEstadoRitmo(
-                                    liderSeleccionado.actualizado,
-                                    tendencias[liderSeleccionado.trabajo_id]
-                                  )
-                                ]
-                              }
-                              ancho={140}
-                              alto={40}
-                            />
+                          <div className="mb-1">
+                            <h3 className="text-lg font-semibold text-slate-800">
+                              {liderSeleccionado.lider_nombre ?? liderSeleccionado.lider_email ?? "—"}
+                            </h3>
+                            <p className="text-sm text-slate-500 mt-0.5">
+                              Hoy en {liderSeleccionado.site}
+                              {liderSeleccionado.dias_en_sitio !== null &&
+                                ` · ${liderSeleccionado.dias_en_sitio} dia${
+                                  liderSeleccionado.dias_en_sitio === 1 ? "" : "s"
+                                } en el sitio`}
+                              {liderSeleccionado.porcentaje_avance !== null &&
+                                ` · ${liderSeleccionado.porcentaje_avance}%`}
+                            </p>
                           </div>
 
                           {errorHistorial && <p className="text-sm text-red-600 mt-4">{errorHistorial}</p>}
