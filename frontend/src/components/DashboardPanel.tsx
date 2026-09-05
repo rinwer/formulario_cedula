@@ -495,9 +495,12 @@ export default function DashboardPanel() {
                     </div>
                   </div>
 
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-1">
                     Dias por site (historico)
                   </h4>
+                  <p className="text-xs text-slate-400 mb-3">
+                    No incluye el site actual (todavia en curso, arriba).
+                  </p>
                   {(() => {
                     const historicos = historial.stints.filter((s) => !s.es_actual);
                     if (historicos.length === 0) {
