@@ -387,6 +387,16 @@ class AvanceDiarioAdminOut(BaseModel):
     dias_en_sitio: int | None = None
 
 
+class PuntoTendencia(BaseModel):
+    fecha: str
+    porcentaje: int | None = None
+
+
+class TendenciaSite(BaseModel):
+    trabajo_id: str
+    serie: list[PuntoTendencia]
+
+
 class LineaTiempoItem(BaseModel):
     fecha: str
     lider_id: str
@@ -2406,6 +2416,137 @@ def listar_programacion(
     manana = datetime.now(ZONA_COLOMBIA).date() + timedelta(days=1)
     fecha_obj = _parsear_fecha_query(fecha, manana)
     return obtener_vista_trabajos_por_fecha(fecha_obj)
+
+
+@app.get("/api/admin/dashboard/tendencias", response_model=list[TendenciaSite])
+def obtener_tendencias_dashboard(
+    trabajo_ids: str = Query(..., description="Ids de trabajo separados por coma"),
+    hasta: str = Query(..., description="YYYY-MM-DD, ultimo dia de la serie"),
+    dias: int = Query(default=10, ge=2, le=30),
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> list[dict]:
+    """Para cada trabajo indicado, el % de avance acumulado dia a dia en
+    los ultimos `dias` dias hasta `hasta` (inclusive): el sparkline de
+    tendencia de las tarjetas de lider del Dashboard. Trae todo en un
+    puñado de consultas (no una por trabajo ni una por dia)."""
+    ids = [i.strip() for i in trabajo_ids.split(",") if i.strip()]
+    if not ids:
+        return []
+
+    try:
+        hasta_obj = date.fromisoformat(hasta)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+    desde_obj = hasta_obj - timedelta(days=dias - 1)
+    inicio_serie = datetime.combine(desde_obj, datetime.min.time(), tzinfo=ZONA_COLOMBIA)
+    fin_serie = datetime.combine(hasta_obj, datetime.min.time(), tzinfo=ZONA_COLOMBIA) + timedelta(
+        days=1
+    )
+
+    try:
+        trabajos_resp = (
+            supabase.table("trabajos")
+            .select("id, actividades(id, qty)")
+            .in_("id", ids)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener las actividades de los trabajos.",
+        ) from exc
+
+    qty_por_trabajo: dict[str, dict[str, float]] = {}
+    for trabajo in trabajos_resp.data or []:
+        qtys: dict[str, float] = {}
+        for act in trabajo.get("actividades") or []:
+            try:
+                qtys[act["id"]] = float(act["qty"])
+            except (TypeError, ValueError):
+                continue
+        qty_por_trabajo[trabajo["id"]] = qtys
+
+    # Acumulado ANTES de desde_obj, para que la serie no arranque como si
+    # el site empezara en 0% justo el primer dia de la ventana.
+    try:
+        avances_previos_resp = (
+            supabase.table("avances_diarios")
+            .select("trabajo_id, avances_diarios_detalle(actividad_id, cantidad)")
+            .in_("trabajo_id", ids)
+            .lt("created_at", inicio_serie.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el avance previo.",
+        ) from exc
+
+    acumulado_por_trabajo: dict[str, dict[str, float]] = {tid: {} for tid in ids}
+    for avance in avances_previos_resp.data or []:
+        tid = avance["trabajo_id"]
+        bucket = acumulado_por_trabajo.setdefault(tid, {})
+        for detalle in avance.get("avances_diarios_detalle") or []:
+            bucket[detalle["actividad_id"]] = (
+                bucket.get(detalle["actividad_id"], 0) + detalle["cantidad"]
+            )
+
+    try:
+        avances_rango_resp = (
+            supabase.table("avances_diarios")
+            .select("trabajo_id, created_at, avances_diarios_detalle(actividad_id, cantidad)")
+            .in_("trabajo_id", ids)
+            .gte("created_at", inicio_serie.isoformat())
+            .lt("created_at", fin_serie.isoformat())
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el avance del rango.",
+        ) from exc
+
+    cantidad_por_trabajo_fecha: dict[str, dict[str, dict[str, float]]] = {}
+    for avance in avances_rango_resp.data or []:
+        tid = avance["trabajo_id"]
+        fecha_local = (
+            _parsear_timestamptz(avance["created_at"]).astimezone(ZONA_COLOMBIA).date().isoformat()
+        )
+        bucket = cantidad_por_trabajo_fecha.setdefault(tid, {}).setdefault(fecha_local, {})
+        for detalle in avance.get("avances_diarios_detalle") or []:
+            bucket[detalle["actividad_id"]] = (
+                bucket.get(detalle["actividad_id"], 0) + detalle["cantidad"]
+            )
+
+    dias_ventana = [desde_obj + timedelta(days=i) for i in range(dias)]
+    resultado = []
+    for tid in ids:
+        qtys = qty_por_trabajo.get(tid, {})
+        qty_total = sum(qtys.values())
+        acumulado = dict(acumulado_por_trabajo.get(tid, {}))
+        serie = []
+        for dia_obj in dias_ventana:
+            fecha_iso = dia_obj.isoformat()
+            for actividad_id, cantidad in cantidad_por_trabajo_fecha.get(tid, {}).get(
+                fecha_iso, {}
+            ).items():
+                acumulado[actividad_id] = acumulado.get(actividad_id, 0) + cantidad
+            if qty_total > 0:
+                acumulado_total = sum(
+                    min(acumulado.get(aid, 0), qmax) for aid, qmax in qtys.items()
+                )
+                porcentaje = round((acumulado_total / qty_total) * 100)
+            else:
+                porcentaje = None
+            serie.append({"fecha": fecha_iso, "porcentaje": porcentaje})
+        resultado.append({"trabajo_id": tid, "serie": serie})
+
+    return resultado
 
 
 @app.get("/api/admin/linea-tiempo", response_model=list[LineaTiempoItem])

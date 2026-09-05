@@ -105,3 +105,13 @@ export type SiteLigero = {
   site: string;
   zona: string;
 };
+
+export type PuntoTendencia = {
+  fecha: string;
+  porcentaje: number | null;
+};
+
+export type TendenciaSite = {
+  trabajo_id: string;
+  serie: PuntoTendencia[];
+};
