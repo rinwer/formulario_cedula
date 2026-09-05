@@ -2713,8 +2713,6 @@ def obtener_historial_lider(
         avances_por_trabajo.setdefault(avance["trabajo_id"], []).append(avance)
 
     stints_salida: list[dict] = []
-    dias_historicos: list[int] = []
-    porcentajes_historicos: list[int] = []
     for tramo in tramos:
         trabajo = trabajo_por_id.get(tramo["trabajo_id"])
         if not trabajo:
@@ -2763,12 +2761,36 @@ def obtener_historial_lider(
             }
         )
 
-        if not tramo["es_actual"]:
-            dias_historicos.append(dias)
-            if porcentaje is not None:
-                porcentajes_historicos.append(porcentaje)
+    # Unifica estadias historicas del MISMO site (mismo trabajo_id): el
+    # lider ya esta fijo (un solo lider_id en todo este endpoint), asi
+    # que dos tramos separados por una interrupcion de un dia u otro
+    # site (tipico del respaldo de avances_diarios de arriba) son en
+    # realidad la misma "vuelta" al site, no dos sites distintos.
+    historicos_por_trabajo: dict[str, dict] = {}
+    actuales_salida: list[dict] = []
+    for stint in stints_salida:
+        if stint["es_actual"]:
+            actuales_salida.append(stint)
+            continue
+        existente = historicos_por_trabajo.get(stint["trabajo_id"])
+        if existente is None:
+            historicos_por_trabajo[stint["trabajo_id"]] = dict(stint)
+        else:
+            existente["dias"] += stint["dias"]
+            if stint["fecha_inicio"] < existente["fecha_inicio"]:
+                existente["fecha_inicio"] = stint["fecha_inicio"]
+            if stint["fecha_fin"] > existente["fecha_fin"]:
+                existente["fecha_fin"] = stint["fecha_fin"]
+                # El % vigente es el de la vuelta mas reciente al site.
+                existente["porcentaje_final"] = stint["porcentaje_final"]
 
+    stints_salida = list(historicos_por_trabajo.values()) + actuales_salida
     stints_salida.sort(key=lambda s: s["fecha_inicio"])
+
+    dias_historicos = [s["dias"] for s in historicos_por_trabajo.values()]
+    porcentajes_historicos = [
+        s["porcentaje_final"] for s in historicos_por_trabajo.values() if s["porcentaje_final"] is not None
+    ]
 
     promedio_dias = (
         round(sum(dias_historicos) / len(dias_historicos), 1) if dias_historicos else None
