@@ -210,11 +210,13 @@ export default function DailyPanel() {
                   className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                 >
                   <option value="">Todos los lideres</option>
-                  {lideres.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.nombre_completo}
-                    </option>
-                  ))}
+                  {lideres
+                    .filter((l) => l.activo)
+                    .map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.nombre_completo}
+                      </option>
+                    ))}
                 </select>
               </div>
             </>
