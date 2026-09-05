@@ -14,6 +14,11 @@ export default function DailyPanel() {
   const [lideres, setLideres] = useState<LiderLigero[]>([]);
   const [noDisponibles, setNoDisponibles] = useState<Disponibilidad[]>([]);
 
+  const [exportDesde, setExportDesde] = useState(hoyIso());
+  const [exportHasta, setExportHasta] = useState(hoyIso());
+  const [exportando, setExportando] = useState(false);
+  const [errorExport, setErrorExport] = useState<string | null>(null);
+
   useEffect(() => {
     fetchAutenticado(`${API_URL}/api/admin/lideres`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
@@ -49,6 +54,34 @@ export default function DailyPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
+  const exportarExcel = async () => {
+    setErrorExport(null);
+    setExportando(true);
+    try {
+      const parametros = new URLSearchParams({ desde: exportDesde, hasta: exportHasta });
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/daily/exportar?${parametros.toString()}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail ?? "Ocurrio un error al exportar.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = `daily_${exportDesde}_a_${exportHasta}.xlsx`;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorExport(err instanceof Error ? err.message : "Ocurrio un error al exportar.");
+    } finally {
+      setExportando(false);
+    }
+  };
+
   const nombrePorLiderId: Record<string, string> = {};
   lideres.forEach((l) => {
     nombrePorLiderId[l.id] = l.nombre_completo;
@@ -83,6 +116,44 @@ export default function DailyPanel() {
         </button>
       </div>
       <p className="text-sm text-slate-500 mb-6 capitalize">{fechaFormateada}</p>
+
+      <div className="flex flex-wrap items-end gap-3 mb-6 pb-6 border-b border-slate-200">
+        <div>
+          <label htmlFor="export-desde" className="block text-xs font-medium text-slate-500 mb-1">
+            Exportar desde
+          </label>
+          <input
+            id="export-desde"
+            type="date"
+            value={exportDesde}
+            max={exportHasta}
+            onChange={(e) => setExportDesde(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+          />
+        </div>
+        <div>
+          <label htmlFor="export-hasta" className="block text-xs font-medium text-slate-500 mb-1">
+            Hasta
+          </label>
+          <input
+            id="export-hasta"
+            type="date"
+            value={exportHasta}
+            min={exportDesde}
+            onChange={(e) => setExportHasta(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={exportarExcel}
+          disabled={exportando}
+          className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 font-medium px-4 py-2 rounded-md whitespace-nowrap"
+        >
+          {exportando ? "Exportando..." : "Exportar a Excel"}
+        </button>
+        {errorExport && <p className="text-sm text-red-600">{errorExport}</p>}
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="w-full lg:w-64 shrink-0">

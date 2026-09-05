@@ -11,7 +11,9 @@ from datetime import date, datetime, timedelta, timezone
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from openpyxl import Workbook
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from supabase import Client, create_client
 
@@ -2038,6 +2040,124 @@ def listar_avances_diarios_admin(
     no hay nada planeado que esperar de el ese dia."""
     fecha_obj = _parsear_fecha_query(fecha, datetime.now(ZONA_COLOMBIA).date())
     return obtener_vista_trabajos_por_fecha(fecha_obj, solo_programados=True)
+
+
+MAX_DIAS_EXPORTACION_DAILY = 31
+
+
+@app.get("/api/admin/daily/exportar")
+def exportar_daily(
+    desde: str = Query(..., description="YYYY-MM-DD"),
+    hasta: str = Query(..., description="YYYY-MM-DD"),
+    _admin: UsuarioActual = Depends(requerir_acceso_daily),
+) -> StreamingResponse:
+    """Exporta a un .xlsx (una sola hoja) lo mismo que muestra el Daily en
+    pantalla, para cada dia del rango [desde, hasta]: una fila por
+    trabajo programado ese dia, mas una fila por cada lider marcado como
+    no disponible ese dia. Reutiliza obtener_vista_trabajos_por_fecha
+    dia por dia (mismo criterio exacto que la vista en pantalla), asi que
+    el rango se limita a un mes para no disparar demasiadas consultas
+    seguidas a Supabase en una sola peticion."""
+    try:
+        desde_obj = date.fromisoformat(desde)
+        hasta_obj = date.fromisoformat(hasta)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+    if hasta_obj < desde_obj:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="'hasta' no puede ser anterior a 'desde'.",
+        )
+
+    if (hasta_obj - desde_obj).days + 1 > MAX_DIAS_EXPORTACION_DAILY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El rango maximo para exportar es de {MAX_DIAS_EXPORTACION_DAILY} dias.",
+        )
+
+    try:
+        disponibilidad_resp = (
+            supabase.table("disponibilidad")
+            .select("lider_id, fecha, motivo, lider:profiles!lider_id(nombre_completo)")
+            .gte("fecha", desde_obj.isoformat())
+            .lte("fecha", hasta_obj.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la disponibilidad del rango.",
+        ) from exc
+
+    no_disponibles_por_fecha: dict[str, list[dict]] = {}
+    for fila in disponibilidad_resp.data or []:
+        perfil_lider = fila.get("lider") or {}
+        no_disponibles_por_fecha.setdefault(fila["fecha"], []).append(
+            {
+                "nombre": perfil_lider.get("nombre_completo") or fila["lider_id"],
+                "motivo": fila.get("motivo"),
+            }
+        )
+
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Daily"
+    hoja.append(
+        ["Fecha", "Site", "Zona", "Lider", "Actualizo", "% Avance", "Avance del dia", "Comentario"]
+    )
+
+    fecha_actual = desde_obj
+    while fecha_actual <= hasta_obj:
+        fecha_iso = fecha_actual.isoformat()
+        for fila in obtener_vista_trabajos_por_fecha(fecha_actual, solo_programados=True):
+            detalle = " · ".join(
+                f"{d['hw_actividad'] or d['actividad'] or '—'}: {d['cantidad']}"
+                for d in fila["detalle"]
+            )
+            hoja.append(
+                [
+                    fecha_iso,
+                    fila["site"],
+                    fila["zona"],
+                    fila["lider_nombre"] or fila["lider_email"] or "—",
+                    "Actualizado" if fila["actualizado"] else "Sin actualizar",
+                    fila["porcentaje_avance"],
+                    detalle,
+                    " | ".join(fila["comentarios"]),
+                ]
+            )
+        for no_disponible in no_disponibles_por_fecha.get(fecha_iso, []):
+            hoja.append(
+                [
+                    fecha_iso,
+                    "—",
+                    "—",
+                    no_disponible["nombre"],
+                    "No disponible",
+                    None,
+                    "—",
+                    no_disponible["motivo"] or "—",
+                ]
+            )
+        fecha_actual += timedelta(days=1)
+
+    for columna, ancho in zip("ABCDEFGH", (12, 20, 14, 20, 14, 10, 40, 50)):
+        hoja.column_dimensions[columna].width = ancho
+
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    buffer.seek(0)
+
+    nombre_archivo = f"daily_{desde}_a_{hasta}.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre_archivo}"'},
+    )
 
 
 @app.get("/api/admin/programacion", response_model=list[AvanceDiarioAdminOut])
