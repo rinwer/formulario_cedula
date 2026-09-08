@@ -334,46 +334,42 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
                   )}
                 </div>
 
-                <div className="overflow-x-auto flex-1">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-500">
-                        <th className="py-2 pr-4 font-medium">Actividad</th>
-                        <th className="py-2 pr-4 font-medium">Tipificacion</th>
-                        <th className="py-2 pr-4 font-medium">HW-Actividad</th>
-                        <th className="py-2 pr-4 font-medium">Qty</th>
-                        <th className="py-2 pr-4 font-medium">Avance</th>
-                        <th className="py-2 pr-4 font-medium">Avance de hoy</th>
-                        <th className="py-2 pr-4 font-medium">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {trabajo.actividades.map((actividad) => {
-                        const qtyMax = qtyNumerico(actividad.qty);
-                        const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
-                        const completa = actividadesCompletas.has(actividad.id);
-                        return (
-                          <tr
-                            key={actividad.id}
-                            className={
-                              "border-b border-slate-100 last:border-0 " +
-                              (completa ? "bg-emerald-50/60" : "")
-                            }
-                          >
-                            <td className="py-2 pr-4 text-slate-700">{actividad.actividad}</td>
-                            <td className="py-2 pr-4 text-slate-700">{actividad.tipificacion}</td>
-                            <td className="py-2 pr-4 text-slate-700">{actividad.hw_actividad}</td>
-                            <td className="py-2 pr-4 text-slate-700">{actividad.qty}</td>
-                            <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
-                            <td className="py-2 pr-4">
-                              {completa ? (
-                                <span
-                                  className="text-emerald-600 text-base font-medium"
-                                  aria-label={`${acumulado} reportado`}
-                                >
-                                  ✓
-                                </span>
-                              ) : (
+                <div className="flex-1 min-w-0">
+                  {/* Pantalla chica: una tarjeta por actividad, sin scroll
+                      horizontal (la tabla de abajo es incomoda de usar con
+                      el dedo en un celular). */}
+                  <div className="flex flex-col gap-2 md:hidden">
+                    {trabajo.actividades.map((actividad) => {
+                      const qtyMax = qtyNumerico(actividad.qty);
+                      const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
+                      const completa = actividadesCompletas.has(actividad.id);
+                      return (
+                        <div
+                          key={actividad.id}
+                          className={
+                            "border rounded-lg p-3 " +
+                            (completa ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200")
+                          }
+                        >
+                          <p className="text-sm font-medium text-slate-800">
+                            {actividad.hw_actividad || actividad.actividad || "—"}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {[
+                              actividad.actividad,
+                              actividad.tipificacion,
+                              actividad.qty ? `Qty ${actividad.qty}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            {completa ? (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                Completado
+                              </span>
+                            ) : (
+                              <>
                                 <input
                                   type="number"
                                   min={0}
@@ -381,27 +377,92 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
                                   inputMode="numeric"
                                   value={avances[actividad.id] ?? ""}
                                   onChange={(e) => manejarCambioAvance(actividad.id, e.target.value)}
-                                  className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
-                                  placeholder="0"
+                                  className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                                  placeholder="Avance de hoy"
                                 />
-                              )}
-                            </td>
-                            <td className="py-2 pr-4">
-                              {completa ? (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-                                  Completado
-                                </span>
-                              ) : qtyMax !== null ? (
-                                <span className="text-xs font-semibold text-red-600">
-                                  Faltan {qtyMax - acumulado}
-                                </span>
-                              ) : null}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                {qtyMax !== null && (
+                                  <span className="text-xs font-semibold text-red-600 shrink-0">
+                                    Faltan {qtyMax - acumulado}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop/tablet: tabla completa. */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500">
+                          <th className="py-2 pr-4 font-medium">Actividad</th>
+                          <th className="py-2 pr-4 font-medium">Tipificacion</th>
+                          <th className="py-2 pr-4 font-medium">HW-Actividad</th>
+                          <th className="py-2 pr-4 font-medium">Qty</th>
+                          <th className="py-2 pr-4 font-medium">Avance</th>
+                          <th className="py-2 pr-4 font-medium">Avance de hoy</th>
+                          <th className="py-2 pr-4 font-medium">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trabajo.actividades.map((actividad) => {
+                          const qtyMax = qtyNumerico(actividad.qty);
+                          const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
+                          const completa = actividadesCompletas.has(actividad.id);
+                          return (
+                            <tr
+                              key={actividad.id}
+                              className={
+                                "border-b border-slate-100 last:border-0 " +
+                                (completa ? "bg-emerald-50/60" : "")
+                              }
+                            >
+                              <td className="py-2 pr-4 text-slate-700">{actividad.actividad}</td>
+                              <td className="py-2 pr-4 text-slate-700">{actividad.tipificacion}</td>
+                              <td className="py-2 pr-4 text-slate-700">{actividad.hw_actividad}</td>
+                              <td className="py-2 pr-4 text-slate-700">{actividad.qty}</td>
+                              <td className="py-2 pr-4 text-slate-700">{actividad.avance}</td>
+                              <td className="py-2 pr-4">
+                                {completa ? (
+                                  <span
+                                    className="text-emerald-600 text-base font-medium"
+                                    aria-label={`${acumulado} reportado`}
+                                  >
+                                    ✓
+                                  </span>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={pendientePorActividad[actividad.id] ?? undefined}
+                                    inputMode="numeric"
+                                    value={avances[actividad.id] ?? ""}
+                                    onChange={(e) => manejarCambioAvance(actividad.id, e.target.value)}
+                                    className="w-20 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                                    placeholder="0"
+                                  />
+                                )}
+                              </td>
+                              <td className="py-2 pr-4">
+                                {completa ? (
+                                  <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                    Completado
+                                  </span>
+                                ) : qtyMax !== null ? (
+                                  <span className="text-xs font-semibold text-red-600">
+                                    Faltan {qtyMax - acumulado}
+                                  </span>
+                                ) : null}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
