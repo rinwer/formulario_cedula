@@ -2467,6 +2467,35 @@ def _agrupar_tramos_por_fecha(trabajo_por_fecha: dict[str, str], hoy: date) -> l
     return tramos
 
 
+def _unificar_por_site(historial: list[dict]) -> list[dict]:
+    """Unifica en el historial de un lider las filas que caen en el
+    MISMO site: si volvio a un site despues de una interrupcion (tipico
+    del respaldo de avances_diarios cuando falta una fila en
+    programacion, ej. un site suelto de un dia en medio), es en realidad
+    la misma "vuelta" al site, no dos pasos distintos. Suma los dias y
+    junta el rango de fechas; queda ordenado por la primera vez que
+    aparecio cada site. Pura (sin I/O) para poder probarla sin base de
+    datos real."""
+    por_site: dict[str, dict] = {}
+    orden: list[str] = []
+    for tramo in historial:
+        existente = por_site.get(tramo["site"])
+        if existente is None:
+            por_site[tramo["site"]] = dict(tramo)
+            orden.append(tramo["site"])
+        else:
+            existente["dias"] += tramo["dias"]
+            if tramo["fecha_inicio"] < existente["fecha_inicio"]:
+                existente["fecha_inicio"] = tramo["fecha_inicio"]
+            if tramo["fecha_fin"] > existente["fecha_fin"]:
+                existente["fecha_fin"] = tramo["fecha_fin"]
+            existente["es_actual"] = existente["es_actual"] or tramo["es_actual"]
+
+    resultado = [por_site[site] for site in orden]
+    resultado.sort(key=lambda t: t["fecha_inicio"])
+    return resultado
+
+
 @app.get(
     "/api/admin/dashboard/lider/{lider_id}/historial",
     response_model=list[HistorialSiteOut],
@@ -2554,7 +2583,7 @@ def obtener_historial_sites_lider(
                 "es_actual": tramo["es_actual"],
             }
         )
-    return resultado
+    return _unificar_por_site(resultado)
 
 
 @app.get("/api/admin/linea-tiempo", response_model=list[LineaTiempoItem])
