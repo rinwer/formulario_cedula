@@ -11,20 +11,47 @@ export default function DashboardPanel() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [liderAbiertoId, setLiderAbiertoId] = useState<string | null>(null);
   const [historialPorLider, setHistorialPorLider] = useState<Record<string, HistorialSite[]>>({});
-  const [cargandoHistorialId, setCargandoHistorialId] = useState<string | null>(null);
   const [errorHistorial, setErrorHistorial] = useState<string | null>(null);
 
   const cargar = async (fechaConsulta: string) => {
     setCargando(true);
     setError(null);
+    setErrorHistorial(null);
     try {
       const parametros = new URLSearchParams({ fecha: fechaConsulta });
       const res = await fetchAutenticado(`${API_URL}/api/admin/programacion?${parametros.toString()}`);
       if (!res.ok) throw new Error();
       const data: AvanceDiarioAdmin[] = await res.json();
       setFilas(data);
+
+      // El historial de cada lider se trae de una vez (en paralelo), para
+      // mostrarlo siempre desplegado sin exigir un clic por lider.
+      const liderIds = Array.from(
+        new Set(data.filter((f) => f.lider_id).map((f) => f.lider_id as string))
+      );
+      const resultados = await Promise.all(
+        liderIds.map(async (liderId): Promise<[string, HistorialSite[] | null]> => {
+          try {
+            const resHistorial = await fetchAutenticado(
+              `${API_URL}/api/admin/dashboard/lider/${liderId}/historial`
+            );
+            if (!resHistorial.ok) throw new Error();
+            return [liderId, await resHistorial.json()];
+          } catch {
+            return [liderId, null];
+          }
+        })
+      );
+
+      const nuevoHistorial: Record<string, HistorialSite[]> = {};
+      let huboError = false;
+      for (const [liderId, historial] of resultados) {
+        if (historial) nuevoHistorial[liderId] = historial;
+        else huboError = true;
+      }
+      setHistorialPorLider(nuevoHistorial);
+      if (huboError) setErrorHistorial("No se pudo cargar el historial de algun lider.");
     } catch {
       setError("No se pudo cargar el resumen de ese dia.");
     } finally {
@@ -34,31 +61,8 @@ export default function DashboardPanel() {
 
   useEffect(() => {
     cargar(fecha);
-    setLiderAbiertoId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
-
-  const toggleHistorial = async (liderId: string) => {
-    if (liderAbiertoId === liderId) {
-      setLiderAbiertoId(null);
-      return;
-    }
-    setLiderAbiertoId(liderId);
-    if (historialPorLider[liderId]) return;
-
-    setErrorHistorial(null);
-    setCargandoHistorialId(liderId);
-    try {
-      const res = await fetchAutenticado(`${API_URL}/api/admin/dashboard/lider/${liderId}/historial`);
-      if (!res.ok) throw new Error();
-      const data: HistorialSite[] = await res.json();
-      setHistorialPorLider((prev) => ({ ...prev, [liderId]: data }));
-    } catch {
-      setErrorHistorial("No se pudo cargar el historial de ese lider.");
-    } finally {
-      setCargandoHistorialId(null);
-    }
-  };
 
   const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
     weekday: "long",
@@ -112,13 +116,11 @@ export default function DashboardPanel() {
                   <th className="py-2 pr-4 font-medium">Lider</th>
                   <th className="py-2 pr-4 font-medium">Site actual</th>
                   <th className="py-2 pr-4 font-medium">Dias en el sitio</th>
-                  <th className="py-2 pr-4 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
                 {filasLiderOrdenadas.map((fila) => {
                   const liderId = fila.lider_id as string;
-                  const abierto = liderAbiertoId === liderId;
                   const historial = historialPorLider[liderId];
                   return (
                     <Fragment key={fila.trabajo_id}>
@@ -132,27 +134,11 @@ export default function DashboardPanel() {
                             ? "—"
                             : `${fila.dias_en_sitio} dia${fila.dias_en_sitio === 1 ? "" : "s"}`}
                         </td>
-                        <td className="py-2 pr-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => toggleHistorial(liderId)}
-                            className="text-xs text-cobre-600 hover:text-cobre-800 font-medium"
-                          >
-                            {cargandoHistorialId === liderId
-                              ? "Cargando..."
-                              : abierto
-                              ? "Ocultar historial"
-                              : "Ver historial"}
-                          </button>
-                        </td>
                       </tr>
-                      {abierto && (
-                        <tr className="border-b border-slate-100 last:border-0 bg-slate-50">
-                          <td colSpan={4} className="py-3 px-4">
+                      <tr className="border-b border-slate-100 last:border-0 bg-slate-50">
+                        <td colSpan={3} className="py-3 px-4">
                             {!historial ? (
-                              cargandoHistorialId !== liderId && (
-                                <p className="text-xs text-slate-500">Sin datos.</p>
-                              )
+                              <p className="text-xs text-slate-500">Sin datos.</p>
                             ) : historial.length === 0 ? (
                               <p className="text-xs text-slate-500">
                                 Todavia no tiene historial de sites.
@@ -192,9 +178,8 @@ export default function DashboardPanel() {
                                 })()}
                               </div>
                             )}
-                          </td>
-                        </tr>
-                      )}
+                        </td>
+                      </tr>
                     </Fragment>
                   );
                 })}
