@@ -348,7 +348,9 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
                           key={actividad.id}
                           className={
                             "border rounded-lg p-3 " +
-                            (completa ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200")
+                            (completa
+                              ? "border-emerald-200 bg-emerald-50/60"
+                              : "border-amber-200 bg-amber-50/60")
                           }
                         >
                           <p className="text-sm font-medium text-slate-800">
