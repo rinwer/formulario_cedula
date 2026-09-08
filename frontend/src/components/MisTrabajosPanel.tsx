@@ -515,6 +515,10 @@ export default function MisTrabajosPanel() {
 
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
+      {!error && cargando && trabajos.length === 0 && (
+        <p className="text-sm text-slate-500">Cargando...</p>
+      )}
+
       {!error && trabajos.length === 0 && !cargando && (
         <p className="text-sm text-slate-500">Todavia no tienes trabajos asignados.</p>
       )}
