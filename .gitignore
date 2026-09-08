@@ -13,6 +13,10 @@ backend/.env
 # Ignorar todos los archivos de registro (logs).
 *.log
 
-# Ignorar todos los archivos de texto, EXCEPTO uno específico
+# Ignorar todos los archivos de texto, EXCEPTO los de dependencias
 *.txt
 !requirements.txt
+!requirements-dev.txt
+
+# Cache de pytest
+.pytest_cache/

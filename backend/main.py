@@ -2586,6 +2586,69 @@ def _contar_no_disponibles_mes(lider_id: str) -> int:
     return len(resp.data or [])
 
 
+def _agrupar_tramos_por_fecha(trabajo_por_fecha: dict[str, str], hoy: date) -> list[dict]:
+    """Agrupa un mapa fecha->trabajo_id en tramos: fechas consecutivas
+    (en orden) con el mismo trabajo_id. Un hueco de dias (fin de semana
+    sin fila ni avance) NO cierra el tramo -- mismo criterio que
+    "dias_en_sitio" en obtener_vista_trabajos_por_fecha, que tampoco
+    resetea el contador por un hueco; solo un cambio de site lo cierra.
+    Pura (sin I/O) para poder probarla sin una base de datos real."""
+    tramos: list[dict] = []
+    tramo_actual: dict | None = None
+    for fecha_iso in sorted(trabajo_por_fecha.keys()):
+        trabajo_id = trabajo_por_fecha[fecha_iso]
+        fecha_obj = date.fromisoformat(fecha_iso)
+        if tramo_actual and tramo_actual["trabajo_id"] == trabajo_id:
+            tramo_actual["fecha_fin"] = fecha_obj
+        else:
+            if tramo_actual:
+                tramos.append(tramo_actual)
+            tramo_actual = {
+                "trabajo_id": trabajo_id,
+                "fecha_inicio": fecha_obj,
+                "fecha_fin": fecha_obj,
+            }
+    if tramo_actual:
+        tramos.append(tramo_actual)
+
+    for tramo in tramos:
+        tramo["es_actual"] = tramo["fecha_fin"] >= hoy
+
+    return tramos
+
+
+def _unificar_tramos_historicos(stints_salida: list[dict]) -> list[dict]:
+    """Unifica estadias historicas del MISMO site (mismo trabajo_id): el
+    lider ya esta fijo (un solo lider_id por llamada), asi que dos
+    tramos separados por una interrupcion de un dia u otro site (tipico
+    del respaldo de avances_diarios cuando falta una fila en
+    programacion) son en realidad la misma "vuelta" al site, no dos
+    sites distintos. El tramo actual (es_actual=True) nunca se mezcla
+    con el historico. Pura (sin I/O) para poder probarla sin base de
+    datos real."""
+    historicos_por_trabajo: dict[str, dict] = {}
+    actuales_salida: list[dict] = []
+    for stint in stints_salida:
+        if stint["es_actual"]:
+            actuales_salida.append(stint)
+            continue
+        existente = historicos_por_trabajo.get(stint["trabajo_id"])
+        if existente is None:
+            historicos_por_trabajo[stint["trabajo_id"]] = dict(stint)
+        else:
+            existente["dias"] += stint["dias"]
+            if stint["fecha_inicio"] < existente["fecha_inicio"]:
+                existente["fecha_inicio"] = stint["fecha_inicio"]
+            if stint["fecha_fin"] > existente["fecha_fin"]:
+                existente["fecha_fin"] = stint["fecha_fin"]
+                # El % vigente es el de la vuelta mas reciente al site.
+                existente["porcentaje_final"] = stint["porcentaje_final"]
+
+    resultado = list(historicos_por_trabajo.values()) + actuales_salida
+    resultado.sort(key=lambda s: s["fecha_inicio"])
+    return resultado
+
+
 @app.get(
     "/api/admin/dashboard/lider/{lider_id}/historial",
     response_model=LiderHistorialOut,
@@ -2651,32 +2714,8 @@ def obtener_historial_lider(
             "dias_no_disponible_mes": _contar_no_disponibles_mes(lider_id),
         }
 
-    # Agrupa en tramos: fechas consecutivas (en orden) con el mismo
-    # trabajo_id. Un hueco de dias (fin de semana sin fila ni avance) NO
-    # cierra el tramo -- mismo criterio que "dias_en_sitio" en
-    # obtener_vista_trabajos_por_fecha, que tampoco resetea el contador
-    # por un hueco; solo un cambio de site lo cierra.
-    tramos: list[dict] = []
-    tramo_actual: dict | None = None
-    for fecha_iso in sorted(trabajo_por_fecha.keys()):
-        trabajo_id = trabajo_por_fecha[fecha_iso]
-        fecha_obj = date.fromisoformat(fecha_iso)
-        if tramo_actual and tramo_actual["trabajo_id"] == trabajo_id:
-            tramo_actual["fecha_fin"] = fecha_obj
-        else:
-            if tramo_actual:
-                tramos.append(tramo_actual)
-            tramo_actual = {
-                "trabajo_id": trabajo_id,
-                "fecha_inicio": fecha_obj,
-                "fecha_fin": fecha_obj,
-            }
-    if tramo_actual:
-        tramos.append(tramo_actual)
-
     hoy = datetime.now(ZONA_COLOMBIA).date()
-    for tramo in tramos:
-        tramo["es_actual"] = tramo["fecha_fin"] >= hoy
+    tramos = _agrupar_tramos_por_fecha(trabajo_por_fecha, hoy)
 
     trabajo_ids = list({t["trabajo_id"] for t in tramos})
 
@@ -2761,35 +2800,13 @@ def obtener_historial_lider(
             }
         )
 
-    # Unifica estadias historicas del MISMO site (mismo trabajo_id): el
-    # lider ya esta fijo (un solo lider_id en todo este endpoint), asi
-    # que dos tramos separados por una interrupcion de un dia u otro
-    # site (tipico del respaldo de avances_diarios de arriba) son en
-    # realidad la misma "vuelta" al site, no dos sites distintos.
-    historicos_por_trabajo: dict[str, dict] = {}
-    actuales_salida: list[dict] = []
-    for stint in stints_salida:
-        if stint["es_actual"]:
-            actuales_salida.append(stint)
-            continue
-        existente = historicos_por_trabajo.get(stint["trabajo_id"])
-        if existente is None:
-            historicos_por_trabajo[stint["trabajo_id"]] = dict(stint)
-        else:
-            existente["dias"] += stint["dias"]
-            if stint["fecha_inicio"] < existente["fecha_inicio"]:
-                existente["fecha_inicio"] = stint["fecha_inicio"]
-            if stint["fecha_fin"] > existente["fecha_fin"]:
-                existente["fecha_fin"] = stint["fecha_fin"]
-                # El % vigente es el de la vuelta mas reciente al site.
-                existente["porcentaje_final"] = stint["porcentaje_final"]
+    stints_salida = _unificar_tramos_historicos(stints_salida)
 
-    stints_salida = list(historicos_por_trabajo.values()) + actuales_salida
-    stints_salida.sort(key=lambda s: s["fecha_inicio"])
-
-    dias_historicos = [s["dias"] for s in historicos_por_trabajo.values()]
+    dias_historicos = [s["dias"] for s in stints_salida if not s["es_actual"]]
     porcentajes_historicos = [
-        s["porcentaje_final"] for s in historicos_por_trabajo.values() if s["porcentaje_final"] is not None
+        s["porcentaje_final"]
+        for s in stints_salida
+        if not s["es_actual"] and s["porcentaje_final"] is not None
     ]
 
     promedio_dias = (
