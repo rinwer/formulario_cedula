@@ -26,6 +26,56 @@ function qtyNumerico(qty: string | null): number | null {
   return Number.isFinite(valor) ? valor : null;
 }
 
+// Borrador local del avance de hoy, por trabajo: en campo la señal falla
+// seguido, y perder los numeros que el lider ya tecleo (sin haber
+// alcanzado a guardar) es el peor escenario posible. Se guarda en
+// localStorage (nunca llega al servidor) y se borra solo cuando el
+// avance se guarda con exito.
+type BorradorAvance = { avances: Record<string, string>; comentario: string };
+
+function claveBorrador(trabajoId: string): string {
+  return `avance-borrador-${trabajoId}`;
+}
+
+function leerBorrador(trabajoId: string): BorradorAvance | null {
+  try {
+    const crudo = localStorage.getItem(claveBorrador(trabajoId));
+    if (!crudo) return null;
+    const datos = JSON.parse(crudo);
+    if (typeof datos !== "object" || datos === null) return null;
+    return {
+      avances:
+        typeof datos.avances === "object" && datos.avances !== null ? datos.avances : {},
+      comentario: typeof datos.comentario === "string" ? datos.comentario : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function guardarBorrador(trabajoId: string, borrador: BorradorAvance): void {
+  try {
+    const hayContenido =
+      borrador.comentario.trim() !== "" ||
+      Object.values(borrador.avances).some((v) => v.trim() !== "");
+    if (!hayContenido) {
+      localStorage.removeItem(claveBorrador(trabajoId));
+      return;
+    }
+    localStorage.setItem(claveBorrador(trabajoId), JSON.stringify(borrador));
+  } catch {
+    // Modo privado, cuota llena, etc.: sin borrador, pero no bloquea el reporte.
+  }
+}
+
+function borrarBorrador(trabajoId: string): void {
+  try {
+    localStorage.removeItem(claveBorrador(trabajoId));
+  } catch {
+    // no-op
+  }
+}
+
 type TrabajoCardProps = {
   trabajo: TrabajoConActividades;
 };
@@ -33,10 +83,18 @@ type TrabajoCardProps = {
 function TrabajoCard({ trabajo }: TrabajoCardProps) {
   const [expandido, setExpandido] = useState(false);
 
-  const [avances, setAvances] = useState<Record<string, string>>({});
-  const [comentario, setComentario] = useState("");
+  const [avances, setAvances] = useState<Record<string, string>>(
+    () => leerBorrador(trabajo.id)?.avances ?? {}
+  );
+  const [comentario, setComentario] = useState(() => leerBorrador(trabajo.id)?.comentario ?? "");
+  const [hayBorradorRestaurado] = useState(() => leerBorrador(trabajo.id) !== null);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<MensajeState>(null);
+
+  useEffect(() => {
+    guardarBorrador(trabajo.id, { avances, comentario });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avances, comentario]);
 
   const [historial, setHistorial] = useState<AvanceDiario[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
@@ -176,6 +234,7 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
         setHistorial((prev) => [nuevo, ...prev]);
         setAvances({});
         setComentario("");
+        borrarBorrador(trabajo.id);
         setMensaje({ type: "success", text: "Avance guardado con exito." });
       } else {
         const data = await res.json().catch(() => null);
@@ -227,6 +286,12 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
 
       {expandido && (
         <div className="mt-4">
+          {hayBorradorRestaurado && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+              Recuperamos un avance sin guardar de antes (se guarda solo en este dispositivo).
+              Revisalo y guardalo cuando tengas señal.
+            </p>
+          )}
           {trabajo.actividades.length === 0 ? (
             <p className="text-sm text-slate-500">
               Todavia no se han cargado actividades para este site.
