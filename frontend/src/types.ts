@@ -110,32 +110,3 @@ export type SiteLigero = {
   zona: string;
 };
 
-export type PuntoTendencia = {
-  fecha: string;
-  porcentaje: number | null;
-};
-
-export type TendenciaSite = {
-  trabajo_id: string;
-  serie: PuntoTendencia[];
-};
-
-export type LiderStint = {
-  trabajo_id: string;
-  site: string;
-  zona: string;
-  fecha_inicio: string;
-  fecha_fin: string;
-  dias: number;
-  porcentaje_final: number | null;
-  es_actual: boolean;
-};
-
-export type LiderHistorial = {
-  lider_id: string;
-  stints: LiderStint[];
-  sites_completados_historico: number;
-  promedio_dias_por_site: number | null;
-  porcentaje_promedio_historico: number | null;
-  dias_no_disponible_mes: number;
-};
