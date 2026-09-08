@@ -294,6 +294,8 @@ class TrabajoOut(BaseModel):
     estado: str = "asignado"
     lider_nombre: str | None = None
     lider_email: str | None = None
+    asignado_por_nombre: str | None = None
+    asignado_por_email: str | None = None
 
 
 class ActividadOut(BaseModel):
@@ -385,6 +387,8 @@ class AvanceDiarioAdminOut(BaseModel):
     detalle: list[AvanceResumenDetalle] = []
     porcentaje_avance: int | None = None
     dias_en_sitio: int | None = None
+    asignado_por_nombre: str | None = None
+    asignado_por_email: str | None = None
 
 
 class PuntoTendencia(BaseModel):
@@ -558,6 +562,9 @@ def fila_trabajo_a_salida(fila: dict) -> dict:
     lider = fila.pop("lider", None) or {}
     fila["lider_nombre"] = lider.get("nombre_completo")
     fila["lider_email"] = lider.get("email")
+    asignador = fila.pop("asignador", None) or {}
+    fila["asignado_por_nombre"] = asignador.get("nombre_completo") or None
+    fila["asignado_por_email"] = asignador.get("email")
     return fila
 
 
@@ -776,7 +783,8 @@ def listar_trabajos(
             supabase.table("trabajos")
             .select(
                 "id, id_smp, site, zona, lider_id, estado, "
-                "lider:profiles!lider_id(nombre_completo, email)"
+                "lider:profiles!lider_id(nombre_completo, email), "
+                "asignador:profiles!asignado_por(nombre_completo, email)"
             )
             .order("created_at", desc=True)
             .execute()
@@ -1727,7 +1735,10 @@ def obtener_vista_trabajos_por_fecha(
     try:
         programacion_resp = (
             supabase.table("programacion")
-            .select("trabajo_id, lider_id, lider:profiles!lider_id(nombre_completo, email, activo)")
+            .select(
+                "trabajo_id, lider_id, lider:profiles!lider_id(nombre_completo, email, activo), "
+                "asignador:profiles!asignado_por(nombre_completo, email)"
+            )
             .in_("trabajo_id", activo_ids)
             .eq("fecha", fecha_obj.isoformat())
             .execute()
@@ -1740,11 +1751,17 @@ def obtener_vista_trabajos_por_fecha(
 
     lider_id_por_trabajo: dict[str, str] = {}
     perfiles_lideres: dict[str, dict] = {}
+    asignador_por_trabajo: dict[str, dict] = {}
     for fila_programacion in programacion_resp.data or []:
         lider_id_por_trabajo[fila_programacion["trabajo_id"]] = fila_programacion["lider_id"]
         perfil_lider = fila_programacion.get("lider")
         if perfil_lider:
             perfiles_lideres[fila_programacion["lider_id"]] = perfil_lider
+        asignador = fila_programacion.get("asignador") or {}
+        asignador_por_trabajo[fila_programacion["trabajo_id"]] = {
+            "nombre": asignador.get("nombre_completo") or None,
+            "email": asignador.get("email"),
+        }
 
     # Respaldo: sites que reportaron avance ese dia pero no tienen fila en
     # programacion para esa fecha (tipicamente historial de antes de que
@@ -1941,6 +1958,8 @@ def obtener_vista_trabajos_por_fecha(
                 "detalle": detalle_resumen,
                 "porcentaje_avance": porcentaje_avance,
                 "dias_en_sitio": dias_en_sitio,
+                "asignado_por_nombre": asignador_por_trabajo.get(trabajo["id"], {}).get("nombre"),
+                "asignado_por_email": asignador_por_trabajo.get(trabajo["id"], {}).get("email"),
             }
         )
 

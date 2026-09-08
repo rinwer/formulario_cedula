@@ -14,6 +14,15 @@ function mananaIso(): string {
   return `${anio}-${mes}-${dia}`;
 }
 
+function sumarDias(iso: string, dias: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + dias);
+  const anio = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${anio}-${mes}-${dia}`;
+}
+
 type FilaProgramacionProps = {
   fila: AvanceDiarioAdmin;
   ocupado: boolean;
@@ -57,6 +66,9 @@ function FilaProgramacion({ fila, ocupado, bloqueado, onQuitar }: FilaProgramaci
       </td>
       <td className="py-2 pr-4 text-slate-700">
         {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
+      </td>
+      <td className="py-2 pr-4 text-xs text-slate-500">
+        {fila.asignado_por_nombre ?? fila.asignado_por_email ?? "—"}
       </td>
       <td className="py-2 pr-4 text-right">
         <button
@@ -143,6 +155,9 @@ export default function ProgramacionPanel() {
   const [liderMotivoAbierto, setLiderMotivoAbierto] = useState<string | null>(null);
   const [motivoTexto, setMotivoTexto] = useState("");
 
+  const [copiando, setCopiando] = useState(false);
+  const [mensajeCopiar, setMensajeCopiar] = useState<string | null>(null);
+
   const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
 
   // La Programacion es hacia adelante: se puede seguir consultando un
@@ -196,8 +211,66 @@ export default function ProgramacionPanel() {
     cargar(fecha);
     setLiderMotivoAbierto(null);
     setMotivoTexto("");
+    setMensajeCopiar(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  const fechaAnterior = sumarDias(fecha, -1);
+
+  const copiarDeAyer = async () => {
+    setErrorAsignacion(null);
+    setMensajeCopiar(null);
+    setCopiando(true);
+    try {
+      const parametros = new URLSearchParams({ fecha: fechaAnterior });
+      const res = await fetchAutenticado(`${API_URL}/api/admin/programacion?${parametros.toString()}`);
+      if (!res.ok) throw new Error();
+      const filasAnterior: AvanceDiarioAdmin[] = await res.json();
+
+      const idsYaAsignadosHoy = new Set(filas.filter((f) => f.lider_id).map((f) => f.trabajo_id));
+      const porCopiar = filasAnterior.filter(
+        (f) =>
+          f.lider_id &&
+          !idsYaAsignadosHoy.has(f.trabajo_id) &&
+          !noDisponibles.has(f.lider_id)
+      );
+
+      if (porCopiar.length === 0) {
+        setMensajeCopiar("No hay nada nuevo para copiar de ese dia.");
+        return;
+      }
+
+      let exitosos = 0;
+      const errores: string[] = [];
+      for (const f of porCopiar) {
+        try {
+          const resAsignar = await fetchAutenticado(`${API_URL}/api/admin/programacion`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trabajo_id: f.trabajo_id, lider_id: f.lider_id, fecha }),
+          });
+          if (resAsignar.ok) {
+            exitosos += 1;
+          } else {
+            const data = await resAsignar.json().catch(() => null);
+            errores.push(`${f.site}: ${data?.detail ?? "error"}`);
+          }
+        } catch {
+          errores.push(`${f.site}: no se pudo conectar`);
+        }
+      }
+
+      await cargar(fecha);
+      setMensajeCopiar(
+        `Se copiaron ${exitosos} de ${porCopiar.length} asignaciones.` +
+          (errores.length > 0 ? ` No se pudieron copiar: ${errores.join(", ")}.` : "")
+      );
+    } catch {
+      setErrorAsignacion("No se pudo cargar la programacion del dia anterior.");
+    } finally {
+      setCopiando(false);
+    }
+  };
 
   const asignarLider = async (trabajoId: string, liderId: string) => {
     if (!liderId) return;
@@ -338,13 +411,25 @@ export default function ProgramacionPanel() {
     <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-lg font-semibold text-slate-800">Programacion</h1>
-        <button
-          onClick={() => cargar(fecha)}
-          disabled={cargando}
-          className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium"
-        >
-          {cargando ? "Actualizando..." : "Actualizar"}
-        </button>
+        <div className="flex items-center gap-4">
+          {!esFechaPasada && (
+            <button
+              onClick={copiarDeAyer}
+              disabled={copiando || cargando}
+              title={`Copia las asignaciones del ${fechaAnterior} que todavia no esten cubiertas hoy`}
+              className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium"
+            >
+              {copiando ? "Copiando..." : "Copiar programacion del dia anterior"}
+            </button>
+          )}
+          <button
+            onClick={() => cargar(fecha)}
+            disabled={cargando}
+            className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium"
+          >
+            {cargando ? "Actualizando..." : "Actualizar"}
+          </button>
+        </div>
       </div>
       <p className="text-sm text-slate-500 mb-6 capitalize">{fechaFormateada}</p>
 
@@ -361,6 +446,7 @@ export default function ProgramacionPanel() {
         <div className="flex-1 overflow-x-auto">
           {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
           {errorAsignacion && <p className="text-sm text-red-600 mb-4">{errorAsignacion}</p>}
+          {mensajeCopiar && <p className="text-sm text-cobre-700 mb-4">{mensajeCopiar}</p>}
 
           {!cargando && !error && filas.length === 0 && (
             <p className="text-sm text-slate-500">No hay trabajos activos para programar.</p>
@@ -506,6 +592,7 @@ export default function ProgramacionPanel() {
                           <th className="py-2 pr-4 font-medium">% Avance</th>
                           <th className="py-2 pr-4 font-medium">Avance del dia</th>
                           <th className="py-2 pr-4 font-medium">Comentario</th>
+                          <th className="py-2 pr-4 font-medium">Asignado por</th>
                           <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                         </tr>
                       </thead>
@@ -542,6 +629,7 @@ export default function ProgramacionPanel() {
                         <th className="py-2 pr-4 font-medium">% Avance</th>
                         <th className="py-2 pr-4 font-medium">Avance del dia</th>
                         <th className="py-2 pr-4 font-medium">Comentario</th>
+                          <th className="py-2 pr-4 font-medium">Asignado por</th>
                         <th className="py-2 pr-4 font-medium text-right">Acciones</th>
                       </tr>
                     </thead>

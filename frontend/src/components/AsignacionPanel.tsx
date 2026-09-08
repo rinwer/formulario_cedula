@@ -24,13 +24,14 @@ const ESTADO_BADGE: Record<EstadoTrabajo, string> = {
   standby: "bg-amber-100 text-amber-700",
 };
 
-type ColumnaOrdenTrabajo = "id_smp" | "site" | "zona" | "estado";
+type ColumnaOrdenTrabajo = "id_smp" | "site" | "zona" | "estado" | "asignado_por";
 
 const COLUMNAS_ORDENABLES_TRABAJOS: { columna: ColumnaOrdenTrabajo; label: string }[] = [
   { columna: "id_smp", label: "ID / SMP" },
   { columna: "site", label: "Site" },
   { columna: "zona", label: "Zona" },
   { columna: "estado", label: "Estado" },
+  { columna: "asignado_por", label: "Asignado por" },
 ];
 
 type InfoTooltipProps = {
@@ -102,6 +103,7 @@ export default function AsignacionPanel() {
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
   const [cargandoLista, setCargandoLista] = useState(false);
   const [errorLista, setErrorLista] = useState<string | null>(null);
+  const [busquedaTrabajos, setBusquedaTrabajos] = useState("");
 
   const [ordenTrabajos, setOrdenTrabajos] = useState<{
     columna: ColumnaOrdenTrabajo;
@@ -116,7 +118,21 @@ export default function AsignacionPanel() {
     );
   };
 
-  const trabajosOrdenados = [...trabajos].sort((a, b) => {
+  const trabajosFiltrados = trabajos.filter((trabajo) => {
+    const consulta = busquedaTrabajos.trim().toLowerCase();
+    if (!consulta) return true;
+    const campos = [
+      trabajo.id_smp,
+      trabajo.site,
+      trabajo.zona,
+      ESTADO_LABEL[trabajo.estado],
+      trabajo.asignado_por_nombre,
+      trabajo.asignado_por_email,
+    ];
+    return campos.some((campo) => campo?.toLowerCase().includes(consulta));
+  });
+
+  const trabajosOrdenados = [...trabajosFiltrados].sort((a, b) => {
     if (!ordenTrabajos) return 0;
     const factor = ordenTrabajos.direccion === "asc" ? 1 : -1;
     switch (ordenTrabajos.columna) {
@@ -130,6 +146,12 @@ export default function AsignacionPanel() {
         return (ESTADO_LABEL[a.estado] ?? a.estado).localeCompare(
           ESTADO_LABEL[b.estado] ?? b.estado
         ) * factor;
+      case "asignado_por":
+        return (
+          (a.asignado_por_nombre ?? a.asignado_por_email ?? "").localeCompare(
+            b.asignado_por_nombre ?? b.asignado_por_email ?? ""
+          ) * factor
+        );
       default:
         return 0;
     }
@@ -614,13 +636,26 @@ export default function AsignacionPanel() {
         )}
 
         {trabajos.length > 0 && (
-          <p className="text-xs text-slate-400 mb-3">
-            Un trabajo en <strong>Finalizado</strong> o <strong>Standby</strong> deja de aparecer en
-            la bandeja del lider de cuadrilla.
-          </p>
+          <>
+            <input
+              type="text"
+              value={busquedaTrabajos}
+              onChange={(e) => setBusquedaTrabajos(e.target.value)}
+              placeholder="Buscar por ID/SMP, site, zona, estado o quien lo asigno..."
+              className="w-full sm:w-96 rounded-md border border-slate-300 px-3 py-1.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+            />
+            <p className="text-xs text-slate-400 mb-3">
+              Un trabajo en <strong>Finalizado</strong> o <strong>Standby</strong> deja de aparecer en
+              la bandeja del lider de cuadrilla.
+            </p>
+          </>
         )}
 
-        {trabajos.length > 0 && (
+        {trabajos.length > 0 && trabajosOrdenados.length === 0 && (
+          <p className="text-sm text-slate-500">Ningun trabajo coincide con esa busqueda.</p>
+        )}
+
+        {trabajosOrdenados.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
@@ -709,6 +744,9 @@ export default function AsignacionPanel() {
                             {ESTADO_LABEL[trabajo.estado]}
                           </span>
                         )}
+                      </td>
+                      <td className="py-2 pr-4 text-xs text-slate-500">
+                        {trabajo.asignado_por_nombre ?? trabajo.asignado_por_email ?? "—"}
                       </td>
                       <td className="py-2 pr-4 text-right whitespace-nowrap">
                         {editando ? (

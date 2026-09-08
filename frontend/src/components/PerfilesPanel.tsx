@@ -49,6 +49,7 @@ export default function PerfilesPanel() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [cargandoLista, setCargandoLista] = useState(false);
   const [errorLista, setErrorLista] = useState<string | null>(null);
+  const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
 
   const [idEditando, setIdEditando] = useState<string | null>(null);
   const [nombreEditado, setNombreEditado] = useState("");
@@ -71,7 +72,19 @@ export default function PerfilesPanel() {
     );
   };
 
-  const usuariosOrdenados = [...usuarios].sort((a, b) => {
+  const usuariosFiltrados = usuarios.filter((usuario) => {
+    const consulta = busquedaUsuarios.trim().toLowerCase();
+    if (!consulta) return true;
+    const campos = [
+      usuario.nombre_completo,
+      usuario.email,
+      ROLE_LABEL[usuario.role] ?? usuario.role,
+      usuario.activo ? "Habilitado" : "Deshabilitado",
+    ];
+    return campos.some((campo) => campo?.toLowerCase().includes(consulta));
+  });
+
+  const usuariosOrdenados = [...usuariosFiltrados].sort((a, b) => {
     if (!orden) return 0;
     const factor = orden.direccion === "asc" ? 1 : -1;
     switch (orden.columna) {
@@ -334,6 +347,20 @@ export default function PerfilesPanel() {
         )}
 
         {usuarios.length > 0 && (
+          <input
+            type="text"
+            value={busquedaUsuarios}
+            onChange={(e) => setBusquedaUsuarios(e.target.value)}
+            placeholder="Buscar por nombre, correo, rol o estado..."
+            className="w-full sm:w-96 rounded-md border border-slate-300 px-3 py-1.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+          />
+        )}
+
+        {usuarios.length > 0 && usuariosOrdenados.length === 0 && (
+          <p className="text-sm text-slate-500">Ningun usuario coincide con esa busqueda.</p>
+        )}
+
+        {usuariosOrdenados.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
