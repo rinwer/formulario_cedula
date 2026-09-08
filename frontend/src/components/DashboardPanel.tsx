@@ -158,23 +158,39 @@ export default function DashboardPanel() {
                                 Todavia no tiene historial de sites.
                               </p>
                             ) : (
-                              <ul className="space-y-1">
-                                {historial.map((h, i) => (
-                                  <li key={i} className="text-xs text-slate-600 flex items-center gap-2">
-                                    <span className="font-medium text-slate-700">{h.site}</span>
-                                    <span className="text-slate-400">({h.zona})</span>
-                                    <span>
-                                      {h.dias} dia{h.dias === 1 ? "" : "s"}
-                                    </span>
-                                    <span className="text-slate-400">
-                                      {h.fecha_inicio} a {h.fecha_fin}
-                                    </span>
-                                    {h.es_actual && (
-                                      <span className="text-cobre-600 font-medium">(en curso)</span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
+                              <div className="flex flex-col gap-2">
+                                {(() => {
+                                  const maxDias = Math.max(...historial.map((h) => h.dias));
+                                  return historial.map((h, i) => (
+                                    <div key={i} className="flex items-center gap-3">
+                                      <span
+                                        className="w-36 shrink-0 text-xs text-slate-700 truncate"
+                                        title={`${h.site} (${h.zona})`}
+                                      >
+                                        {h.site}
+                                      </span>
+                                      <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+                                        <div
+                                          className={
+                                            "h-full rounded-full " +
+                                            (h.es_actual ? "bg-cobre-500" : "bg-slate-400")
+                                          }
+                                          style={{ width: `${(h.dias / maxDias) * 100}%` }}
+                                        />
+                                      </div>
+                                      <span className="w-16 shrink-0 text-xs text-slate-600 text-right">
+                                        {h.dias} dia{h.dias === 1 ? "" : "s"}
+                                      </span>
+                                      <span className="w-40 shrink-0 text-xs text-slate-400">
+                                        {h.fecha_inicio} a {h.fecha_fin}
+                                        {h.es_actual && (
+                                          <span className="text-cobre-600 font-medium"> (en curso)</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  ));
+                                })()}
+                              </div>
                             )}
                           </td>
                         </tr>
