@@ -243,8 +243,17 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
           text: data?.detail ?? "Ocurrio un error al guardar el avance.",
         });
       }
-    } catch {
-      setMensaje({ type: "error", text: "No se pudo conectar con el servidor. Intenta de nuevo." });
+    } catch (error) {
+      // El timeout de fetchAutenticado lanza un Error con mensaje propio
+      // (distinto de un TypeError de red, que no es amigable para
+      // mostrar tal cual); cualquier otra falla usa el mensaje generico.
+      setMensaje({
+        type: "error",
+        text:
+          error instanceof Error && !(error instanceof TypeError)
+            ? error.message
+            : "No se pudo conectar con el servidor. Intenta de nuevo.",
+      });
     } finally {
       setGuardando(false);
     }
