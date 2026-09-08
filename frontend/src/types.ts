@@ -104,6 +104,15 @@ export type Disponibilidad = {
   motivo: string | null;
 };
 
+export type HistorialSite = {
+  site: string;
+  zona: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  dias: number;
+  es_actual: boolean;
+};
+
 export type SiteLigero = {
   id: string;
   site: string;

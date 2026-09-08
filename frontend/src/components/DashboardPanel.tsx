@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
-import { AvanceDiarioAdmin } from "../types";
+import { AvanceDiarioAdmin, HistorialSite } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -10,6 +10,11 @@ export default function DashboardPanel() {
   const [filas, setFilas] = useState<AvanceDiarioAdmin[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [liderAbiertoId, setLiderAbiertoId] = useState<string | null>(null);
+  const [historialPorLider, setHistorialPorLider] = useState<Record<string, HistorialSite[]>>({});
+  const [cargandoHistorialId, setCargandoHistorialId] = useState<string | null>(null);
+  const [errorHistorial, setErrorHistorial] = useState<string | null>(null);
 
   const cargar = async (fechaConsulta: string) => {
     setCargando(true);
@@ -29,8 +34,31 @@ export default function DashboardPanel() {
 
   useEffect(() => {
     cargar(fecha);
+    setLiderAbiertoId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
+
+  const toggleHistorial = async (liderId: string) => {
+    if (liderAbiertoId === liderId) {
+      setLiderAbiertoId(null);
+      return;
+    }
+    setLiderAbiertoId(liderId);
+    if (historialPorLider[liderId]) return;
+
+    setErrorHistorial(null);
+    setCargandoHistorialId(liderId);
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/dashboard/lider/${liderId}/historial`);
+      if (!res.ok) throw new Error();
+      const data: HistorialSite[] = await res.json();
+      setHistorialPorLider((prev) => ({ ...prev, [liderId]: data }));
+    } catch {
+      setErrorHistorial("No se pudo cargar el historial de ese lider.");
+    } finally {
+      setCargandoHistorialId(null);
+    }
+  };
 
   const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
     weekday: "long",
@@ -71,6 +99,7 @@ export default function DashboardPanel() {
 
         <div className="flex-1 overflow-x-auto">
           {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+          {errorHistorial && <p className="text-sm text-red-600 mb-4">{errorHistorial}</p>}
 
           {!cargando && !error && filasLiderOrdenadas.length === 0 && (
             <p className="text-sm text-slate-500">Nadie tiene sites programados esta fecha.</p>
@@ -83,22 +112,76 @@ export default function DashboardPanel() {
                   <th className="py-2 pr-4 font-medium">Lider</th>
                   <th className="py-2 pr-4 font-medium">Site actual</th>
                   <th className="py-2 pr-4 font-medium">Dias en el sitio</th>
+                  <th className="py-2 pr-4 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
-                {filasLiderOrdenadas.map((fila) => (
-                  <tr key={fila.trabajo_id} className="border-b border-slate-100 last:border-0">
-                    <td className="py-2 pr-4 text-slate-700">
-                      {fila.lider_nombre ?? fila.lider_email ?? "—"}
-                    </td>
-                    <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
-                    <td className="py-2 pr-4 text-slate-700">
-                      {fila.dias_en_sitio === null
-                        ? "—"
-                        : `${fila.dias_en_sitio} dia${fila.dias_en_sitio === 1 ? "" : "s"}`}
-                    </td>
-                  </tr>
-                ))}
+                {filasLiderOrdenadas.map((fila) => {
+                  const liderId = fila.lider_id as string;
+                  const abierto = liderAbiertoId === liderId;
+                  const historial = historialPorLider[liderId];
+                  return (
+                    <Fragment key={fila.trabajo_id}>
+                      <tr className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 pr-4 text-slate-700">
+                          {fila.lider_nombre ?? fila.lider_email ?? "—"}
+                        </td>
+                        <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
+                        <td className="py-2 pr-4 text-slate-700">
+                          {fila.dias_en_sitio === null
+                            ? "—"
+                            : `${fila.dias_en_sitio} dia${fila.dias_en_sitio === 1 ? "" : "s"}`}
+                        </td>
+                        <td className="py-2 pr-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => toggleHistorial(liderId)}
+                            className="text-xs text-cobre-600 hover:text-cobre-800 font-medium"
+                          >
+                            {cargandoHistorialId === liderId
+                              ? "Cargando..."
+                              : abierto
+                              ? "Ocultar historial"
+                              : "Ver historial"}
+                          </button>
+                        </td>
+                      </tr>
+                      {abierto && (
+                        <tr className="border-b border-slate-100 last:border-0 bg-slate-50">
+                          <td colSpan={4} className="py-3 px-4">
+                            {!historial ? (
+                              cargandoHistorialId !== liderId && (
+                                <p className="text-xs text-slate-500">Sin datos.</p>
+                              )
+                            ) : historial.length === 0 ? (
+                              <p className="text-xs text-slate-500">
+                                Todavia no tiene historial de sites.
+                              </p>
+                            ) : (
+                              <ul className="space-y-1">
+                                {historial.map((h, i) => (
+                                  <li key={i} className="text-xs text-slate-600 flex items-center gap-2">
+                                    <span className="font-medium text-slate-700">{h.site}</span>
+                                    <span className="text-slate-400">({h.zona})</span>
+                                    <span>
+                                      {h.dias} dia{h.dias === 1 ? "" : "s"}
+                                    </span>
+                                    <span className="text-slate-400">
+                                      {h.fecha_inicio} a {h.fecha_fin}
+                                    </span>
+                                    {h.es_actual && (
+                                      <span className="text-cobre-600 font-medium">(en curso)</span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}

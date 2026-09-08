@@ -391,6 +391,15 @@ class AvanceDiarioAdminOut(BaseModel):
     asignado_por_email: str | None = None
 
 
+class HistorialSiteOut(BaseModel):
+    site: str
+    zona: str
+    fecha_inicio: str
+    fecha_fin: str
+    dias: int
+    es_actual: bool
+
+
 class LineaTiempoItem(BaseModel):
     fecha: str
     lider_id: str
@@ -2425,6 +2434,127 @@ def listar_programacion(
     manana = datetime.now(ZONA_COLOMBIA).date() + timedelta(days=1)
     fecha_obj = _parsear_fecha_query(fecha, manana)
     return obtener_vista_trabajos_por_fecha(fecha_obj)
+
+
+def _agrupar_tramos_por_fecha(trabajo_por_fecha: dict[str, str], hoy: date) -> list[dict]:
+    """Agrupa un mapa fecha->trabajo_id en tramos: fechas consecutivas
+    (en orden) con el mismo trabajo_id. Un hueco de dias (fin de semana
+    sin fila ni avance) NO cierra el tramo -- mismo criterio que
+    "dias_en_sitio" en obtener_vista_trabajos_por_fecha, que tampoco
+    resetea el contador por un hueco; solo un cambio de site lo cierra.
+    Pura (sin I/O) para poder probarla sin una base de datos real."""
+    tramos: list[dict] = []
+    tramo_actual: dict | None = None
+    for fecha_iso in sorted(trabajo_por_fecha.keys()):
+        trabajo_id = trabajo_por_fecha[fecha_iso]
+        fecha_obj = date.fromisoformat(fecha_iso)
+        if tramo_actual and tramo_actual["trabajo_id"] == trabajo_id:
+            tramo_actual["fecha_fin"] = fecha_obj
+        else:
+            if tramo_actual:
+                tramos.append(tramo_actual)
+            tramo_actual = {
+                "trabajo_id": trabajo_id,
+                "fecha_inicio": fecha_obj,
+                "fecha_fin": fecha_obj,
+            }
+    if tramo_actual:
+        tramos.append(tramo_actual)
+
+    for tramo in tramos:
+        tramo["es_actual"] = tramo["fecha_fin"] >= hoy
+
+    return tramos
+
+
+@app.get(
+    "/api/admin/dashboard/lider/{lider_id}/historial",
+    response_model=list[HistorialSiteOut],
+)
+def obtener_historial_sites_lider(
+    lider_id: str,
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> list[dict]:
+    """Todo el historial de sites en los que ha estado un lider (tramos
+    de dias consecutivos en el mismo site, del mas antiguo al mas
+    reciente), para mostrar en el Dashboard."""
+    try:
+        prog_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id, fecha")
+            .eq("lider_id", lider_id)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la programacion del lider.",
+        ) from exc
+
+    trabajo_por_fecha: dict[str, str] = {
+        fila["fecha"]: fila["trabajo_id"] for fila in prog_resp.data or []
+    }
+
+    # Respaldo: dias en que el lider reporto avance pero no tenia fila en
+    # programacion (historial de antes de que la Programacion se
+    # empezara a usar de forma consistente para el). Mismo criterio que
+    # obtener_vista_trabajos_por_fecha y obtener_linea_tiempo:
+    # programacion manda, esto solo llena huecos.
+    try:
+        avances_lider_resp = (
+            supabase.table("avances_diarios")
+            .select("trabajo_id, created_at")
+            .eq("lider_id", lider_id)
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los avances del lider.",
+        ) from exc
+
+    for avance in avances_lider_resp.data or []:
+        fecha_avance = (
+            _parsear_timestamptz(avance["created_at"]).astimezone(ZONA_COLOMBIA).date().isoformat()
+        )
+        trabajo_por_fecha.setdefault(fecha_avance, avance["trabajo_id"])
+
+    if not trabajo_por_fecha:
+        return []
+
+    hoy = datetime.now(ZONA_COLOMBIA).date()
+    tramos = _agrupar_tramos_por_fecha(trabajo_por_fecha, hoy)
+
+    trabajo_ids = list({t["trabajo_id"] for t in tramos})
+    try:
+        trabajos_resp = (
+            supabase.table("trabajos").select("id, site, zona").in_("id", trabajo_ids).execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los sites del lider.",
+        ) from exc
+    trabajo_por_id = {t["id"]: t for t in trabajos_resp.data or []}
+
+    resultado = []
+    for tramo in tramos:
+        trabajo = trabajo_por_id.get(tramo["trabajo_id"])
+        if not trabajo:
+            continue
+        dias = (tramo["fecha_fin"] - tramo["fecha_inicio"]).days + 1
+        resultado.append(
+            {
+                "site": trabajo["site"],
+                "zona": trabajo["zona"],
+                "fecha_inicio": tramo["fecha_inicio"].isoformat(),
+                "fecha_fin": tramo["fecha_fin"].isoformat(),
+                "dias": dias,
+                "es_actual": tramo["es_actual"],
+            }
+        )
+    return resultado
 
 
 @app.get("/api/admin/linea-tiempo", response_model=list[LineaTiempoItem])
