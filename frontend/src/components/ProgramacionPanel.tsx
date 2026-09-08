@@ -384,7 +384,11 @@ export default function ProgramacionPanel() {
                   key={lider.id}
                   className={
                     "border rounded-lg p-4 " +
-                    (marcadoNoDisponible ? "border-slate-200 bg-slate-50" : "border-slate-200")
+                    (marcadoNoDisponible
+                      ? "border-slate-200 bg-slate-50"
+                      : sitesDelLider.length > 0
+                      ? "border-emerald-200 bg-emerald-50/40"
+                      : "border-amber-200 bg-amber-50/40")
                   }
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
