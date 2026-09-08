@@ -411,13 +411,13 @@ export default function ProgramacionPanel() {
     <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-lg font-semibold text-slate-800">Programacion</h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
           {!esFechaPasada && (
             <button
               onClick={copiarDeAyer}
               disabled={copiando || cargando}
               title={`Copia las asignaciones del ${fechaAnterior} que todavia no esten cubiertas hoy`}
-              className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium"
+              className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium px-3 py-1.5 rounded-md border border-cobre-200 hover:border-cobre-300"
             >
               {copiando ? "Copiando..." : "Copiar programacion del dia anterior"}
             </button>
@@ -425,7 +425,7 @@ export default function ProgramacionPanel() {
           <button
             onClick={() => cargar(fecha)}
             disabled={cargando}
-            className="text-sm text-cobre-600 hover:text-cobre-800 disabled:text-slate-400 font-medium"
+            className="text-sm text-slate-600 hover:text-slate-800 disabled:text-slate-400 font-medium px-3 py-1.5 rounded-md border border-slate-300"
           >
             {cargando ? "Actualizando..." : "Actualizar"}
           </button>
