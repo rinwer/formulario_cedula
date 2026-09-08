@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
 import { AvanceDiarioAdmin, HistorialSite } from "../types";
@@ -110,75 +110,57 @@ export default function DashboardPanel() {
           )}
 
           {filasLiderOrdenadas.length > 0 && (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Lider</th>
-                  <th className="py-2 pr-4 font-medium">Site actual</th>
-                  <th className="py-2 pr-4 font-medium">Dias en el sitio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filasLiderOrdenadas.map((fila) => {
-                  const liderId = fila.lider_id as string;
-                  const historial = historialPorLider[liderId];
-                  return (
-                    <Fragment key={fila.trabajo_id}>
-                      <tr className="border-b border-slate-100 last:border-0">
-                        <td className="py-2 pr-4 text-slate-700">
-                          {fila.lider_nombre ?? fila.lider_email ?? "—"}
-                        </td>
-                        <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
-                        <td className="py-2 pr-4 text-slate-700">
-                          {fila.dias_en_sitio === null
-                            ? "—"
-                            : `${fila.dias_en_sitio} dia${fila.dias_en_sitio === 1 ? "" : "s"}`}
-                        </td>
-                      </tr>
-                      <tr className="border-b border-slate-100 last:border-0 bg-slate-50">
-                        <td colSpan={3} className="py-3 px-4">
-                            {!historial ? (
-                              <p className="text-xs text-slate-500">Sin datos.</p>
-                            ) : historial.length === 0 ? (
-                              <p className="text-xs text-slate-500">
-                                Todavia no tiene historial de sites.
-                              </p>
-                            ) : (
-                              <div className="flex flex-col gap-2">
-                                {(() => {
-                                  const maxDias = Math.max(...historial.map((h) => h.dias));
-                                  return historial.map((h, i) => (
-                                    <div key={i} className="flex items-center gap-3">
-                                      <span
-                                        className="w-36 shrink-0 text-xs text-slate-700 truncate"
-                                        title={`${h.site} (${h.zona})`}
-                                      >
-                                        {h.site}
-                                      </span>
-                                      <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
-                                        <div
-                                          className={
-                                            "h-full rounded-full " +
-                                            (h.es_actual ? "bg-cobre-500" : "bg-slate-400")
-                                          }
-                                          style={{ width: `${(h.dias / maxDias) * 100}%` }}
-                                        />
-                                      </div>
-                                      <span className="w-16 shrink-0 text-xs text-slate-600 text-right">
-                                        {h.dias} dia{h.dias === 1 ? "" : "s"}
-                                      </span>
-                                    </div>
-                                  ));
-                                })()}
+            <div className="flex flex-col divide-y divide-slate-100">
+              {filasLiderOrdenadas.map((fila) => {
+                const liderId = fila.lider_id as string;
+                const historial = historialPorLider[liderId];
+                return (
+                  <div key={fila.trabajo_id} className="py-3">
+                    <h3 className="font-medium text-slate-800 mb-2">
+                      {fila.lider_nombre ?? fila.lider_email ?? "—"}
+                    </h3>
+                    {!historial ? (
+                      <p className="text-xs text-slate-500">Sin datos.</p>
+                    ) : historial.length === 0 ? (
+                      <p className="text-xs text-slate-500">Todavia no tiene historial de sites.</p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {(() => {
+                          const maxDias = Math.max(...historial.map((h) => h.dias));
+                          return historial.map((h, i) => (
+                            <div key={i} className="flex items-center gap-3">
+                              <span
+                                className="w-36 shrink-0 text-xs text-slate-700 truncate"
+                                title={`${h.site} (${h.zona})`}
+                              >
+                                {h.site}
+                              </span>
+                              <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={
+                                    "h-full rounded-full " +
+                                    (h.es_actual ? "bg-cobre-500" : "bg-slate-400")
+                                  }
+                                  style={{ width: `${(h.dias / maxDias) * 100}%` }}
+                                />
                               </div>
-                            )}
-                        </td>
-                      </tr>
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                              <span className="w-16 shrink-0 text-xs text-slate-600 text-right">
+                                {h.dias} dia{h.dias === 1 ? "" : "s"}
+                              </span>
+                              {h.es_actual && (
+                                <span className="w-16 shrink-0 text-xs text-cobre-600 font-medium">
+                                  en curso
+                                </span>
+                              )}
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
