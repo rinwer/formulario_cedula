@@ -167,12 +167,9 @@ export default function DashboardPanel() {
                                       <span className="w-16 shrink-0 text-xs text-slate-600 text-right">
                                         {h.dias} dia{h.dias === 1 ? "" : "s"}
                                       </span>
-                                      <span className="w-40 shrink-0 text-xs text-slate-400">
-                                        {h.fecha_inicio} a {h.fecha_fin}
-                                        {h.es_actual && (
-                                          <span className="text-cobre-600 font-medium"> (en curso)</span>
-                                        )}
-                                      </span>
+                                      {h.es_actual && (
+                                        <span className="text-xs text-cobre-600 font-medium">en curso</span>
+                                      )}
                                     </div>
                                   ));
                                 })()}
