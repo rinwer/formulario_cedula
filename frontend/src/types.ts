@@ -102,6 +102,8 @@ export type AvanceDiarioAdmin = {
   dias_en_sitio: number | null;
   asignado_por_nombre: string | null;
   asignado_por_email: string | null;
+  tipos_trabajo: string[];
+  ofensores: string[];
 };
 
 export type LineaTiempoItem = {

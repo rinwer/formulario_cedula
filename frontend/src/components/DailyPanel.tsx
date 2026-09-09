@@ -297,6 +297,8 @@ export default function DailyPanel() {
                   <th className="py-2 pr-4 font-medium">Lider</th>
                   <th className="py-2 pr-4 font-medium">Actualizo</th>
                   <th className="py-2 pr-4 font-medium">% Avance</th>
+                  <th className="py-2 pr-4 font-medium">Tipo de trabajo</th>
+                  <th className="py-2 pr-4 font-medium">Ofensor</th>
                   <th className="py-2 pr-4 font-medium">Avance del dia</th>
                   <th className="py-2 pr-4 font-medium">Comentario</th>
                 </tr>
@@ -340,6 +342,12 @@ export default function DailyPanel() {
                         </span>
                       )}
                     </td>
+                    <td className="py-2 pr-4 text-slate-700">
+                      {fila.tipos_trabajo.length === 0 ? "—" : fila.tipos_trabajo.join(" | ")}
+                    </td>
+                    <td className="py-2 pr-4 text-amber-700">
+                      {fila.ofensores.length === 0 ? "—" : fila.ofensores.join(" | ")}
+                    </td>
                     <td className="py-2 pr-4 text-xs text-slate-600">
                       {fila.detalle.length === 0
                         ? "—"
@@ -363,6 +371,8 @@ export default function DailyPanel() {
                         No disponible
                       </span>
                     </td>
+                    <td className="py-2 pr-4 text-slate-400">—</td>
+                    <td className="py-2 pr-4 text-slate-400">—</td>
                     <td className="py-2 pr-4 text-slate-400">—</td>
                     <td className="py-2 pr-4 text-slate-400">—</td>
                     <td className="py-2 pr-4 text-slate-700">{d.motivo ?? "—"}</td>

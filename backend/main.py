@@ -468,6 +468,8 @@ class AvanceDiarioAdminOut(BaseModel):
     dias_en_sitio: int | None = None
     asignado_por_nombre: str | None = None
     asignado_por_email: str | None = None
+    tipos_trabajo: list[str] = []
+    ofensores: list[str] = []
 
 
 class HistorialSiteOut(BaseModel):
@@ -1948,7 +1950,11 @@ def obtener_vista_trabajos_por_fecha(
     try:
         avances_resp = (
             supabase.table("avances_diarios")
-            .select("id, trabajo_id, lider_id, comentario, created_at")
+            .select(
+                "id, trabajo_id, lider_id, comentario, created_at, "
+                "ofensor:catalogo_opciones!ofensor_id(valor), "
+                "tipo_trabajo:catalogo_opciones!tipo_trabajo_id(valor)"
+            )
             .in_("trabajo_id", activo_ids)
             .lt("created_at", fin.isoformat())
             .order("created_at")
@@ -2151,6 +2157,24 @@ def obtener_vista_trabajos_por_fecha(
 
         comentarios = [a["comentario"] for a in avances_trabajo if a.get("comentario")]
 
+        # Varios guardados en el mismo dia normalmente repiten el mismo
+        # tipo de trabajo/ofensor; se deduplica preservando el orden para
+        # no mostrar "Instalacion | Instalacion" en la tabla del Daily.
+        tipos_trabajo = list(
+            dict.fromkeys(
+                (a.get("tipo_trabajo") or {}).get("valor")
+                for a in avances_trabajo
+                if (a.get("tipo_trabajo") or {}).get("valor")
+            )
+        )
+        ofensores = list(
+            dict.fromkeys(
+                (a.get("ofensor") or {}).get("valor")
+                for a in avances_trabajo
+                if (a.get("ofensor") or {}).get("valor")
+            )
+        )
+
         cantidad_por_actividad: dict[str, int] = {}
         for avance in avances_trabajo:
             for detalle in detalles_por_avance.get(avance["id"], []):
@@ -2202,6 +2226,8 @@ def obtener_vista_trabajos_por_fecha(
                 "dias_en_sitio": dias_en_sitio,
                 "asignado_por_nombre": asignador_por_trabajo.get(trabajo["id"], {}).get("nombre"),
                 "asignado_por_email": asignador_por_trabajo.get(trabajo["id"], {}).get("email"),
+                "tipos_trabajo": tipos_trabajo,
+                "ofensores": ofensores,
             }
         )
 
@@ -2431,6 +2457,8 @@ def _filas_export_rango(desde_obj: date, hasta_obj: date, lider_id: str | None) 
                     fila["lider_nombre"] or fila["lider_email"] or "—",
                     "Actualizado" if fila["actualizado"] else "Sin actualizar",
                     fila["porcentaje_avance"],
+                    " | ".join(fila["tipos_trabajo"]) if fila["tipos_trabajo"] else "—",
+                    " | ".join(fila["ofensores"]) if fila["ofensores"] else "—",
                     detalle,
                     " | ".join(fila["comentarios"]),
                 ]
@@ -2444,6 +2472,8 @@ def _filas_export_rango(desde_obj: date, hasta_obj: date, lider_id: str | None) 
                     no_disponible["nombre"],
                     "No disponible",
                     None,
+                    "—",
+                    "—",
                     "—",
                     no_disponible["motivo"] or "—",
                 ]
@@ -2488,7 +2518,11 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
     try:
         avances_resp = (
             supabase.table("avances_diarios")
-            .select("id, lider_id, comentario, created_at")
+            .select(
+                "id, lider_id, comentario, created_at, "
+                "ofensor:catalogo_opciones!ofensor_id(valor), "
+                "tipo_trabajo:catalogo_opciones!tipo_trabajo_id(valor)"
+            )
             .eq("trabajo_id", trabajo_id)
             .order("created_at")
             .execute()
@@ -2556,6 +2590,8 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
         avances_del_dia = avances_por_fecha[fecha_local]
         cantidad_dia_por_actividad: dict[str, float] = {}
         comentarios_dia: list[str] = []
+        tipos_trabajo_dia: list[str] = []
+        ofensores_dia: list[str] = []
         for avance in avances_del_dia:
             for d in detalles_por_avance.get(avance["id"], []):
                 cantidad_dia_por_actividad[d["actividad_id"]] = (
@@ -2563,6 +2599,12 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
                 )
             if avance.get("comentario"):
                 comentarios_dia.append(avance["comentario"])
+            tipo_trabajo_valor = (avance.get("tipo_trabajo") or {}).get("valor")
+            if tipo_trabajo_valor and tipo_trabajo_valor not in tipos_trabajo_dia:
+                tipos_trabajo_dia.append(tipo_trabajo_valor)
+            ofensor_valor = (avance.get("ofensor") or {}).get("valor")
+            if ofensor_valor and ofensor_valor not in ofensores_dia:
+                ofensores_dia.append(ofensor_valor)
 
         detalle_texto = " · ".join(
             f"{hw_por_actividad.get(aid, '—')}: {cantidad}"
@@ -2587,6 +2629,8 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
                 perfil_lider.get("nombre_completo") or perfil_lider.get("email") or "—",
                 "Actualizado",
                 porcentaje,
+                " | ".join(tipos_trabajo_dia) if tipos_trabajo_dia else "—",
+                " | ".join(ofensores_dia) if ofensores_dia else "—",
                 detalle_texto,
                 " | ".join(comentarios_dia) if comentarios_dia else "—",
             ]
@@ -2660,7 +2704,18 @@ def exportar_daily(
     hoja = libro.active
     hoja.title = "Daily"
     hoja.append(
-        ["Fecha", "Site", "Zona", "Lider", "Actualizo", "% Avance", "Avance del dia", "Comentario"]
+        [
+            "Fecha",
+            "Site",
+            "Zona",
+            "Lider",
+            "Actualizo",
+            "% Avance",
+            "Tipo de trabajo",
+            "Ofensor",
+            "Avance del dia",
+            "Comentario",
+        ]
     )
     for celda in hoja[1]:
         celda.font = Font(bold=True)
@@ -2671,7 +2726,7 @@ def exportar_daily(
     hoja.freeze_panes = "A2"
     hoja.auto_filter.ref = hoja.dimensions
 
-    for columna, ancho in zip("ABCDEFGH", (12, 20, 14, 20, 14, 10, 40, 50)):
+    for columna, ancho in zip("ABCDEFGHIJ", (12, 20, 14, 20, 14, 10, 18, 18, 40, 50)):
         hoja.column_dimensions[columna].width = ancho
 
     buffer = io.BytesIO()
