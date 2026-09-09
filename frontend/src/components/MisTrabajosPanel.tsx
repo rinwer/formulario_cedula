@@ -31,7 +31,12 @@ function qtyNumerico(qty: string | null): number | null {
 // alcanzado a guardar) es el peor escenario posible. Se guarda en
 // localStorage (nunca llega al servidor) y se borra solo cuando el
 // avance se guarda con exito.
-type BorradorAvance = { avances: Record<string, string>; comentario: string; ofensorId: string };
+type BorradorAvance = {
+  avances: Record<string, string>;
+  comentario: string;
+  ofensorId: string;
+  tipoTrabajoId: string;
+};
 
 function claveBorrador(trabajoId: string): string {
   return `avance-borrador-${trabajoId}`;
@@ -48,6 +53,7 @@ function leerBorrador(trabajoId: string): BorradorAvance | null {
         typeof datos.avances === "object" && datos.avances !== null ? datos.avances : {},
       comentario: typeof datos.comentario === "string" ? datos.comentario : "",
       ofensorId: typeof datos.ofensorId === "string" ? datos.ofensorId : "",
+      tipoTrabajoId: typeof datos.tipoTrabajoId === "string" ? datos.tipoTrabajoId : "",
     };
   } catch {
     return null;
@@ -59,6 +65,7 @@ function guardarBorrador(trabajoId: string, borrador: BorradorAvance): void {
     const hayContenido =
       borrador.comentario.trim() !== "" ||
       borrador.ofensorId !== "" ||
+      borrador.tipoTrabajoId !== "" ||
       Object.values(borrador.avances).some((v) => v.trim() !== "");
     if (!hayContenido) {
       localStorage.removeItem(claveBorrador(trabajoId));
@@ -109,9 +116,10 @@ function guardarCacheTrabajos(datos: TrabajoConActividades[]): void {
 type TrabajoCardProps = {
   trabajo: TrabajoConActividades;
   catalogoOfensor: CatalogoOpcion[];
+  catalogoTipoTrabajo: CatalogoOpcion[];
 };
 
-function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
+function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoCardProps) {
   const [expandido, setExpandido] = useState(false);
 
   const [avances, setAvances] = useState<Record<string, string>>(
@@ -119,15 +127,18 @@ function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
   );
   const [comentario, setComentario] = useState(() => leerBorrador(trabajo.id)?.comentario ?? "");
   const [ofensorId, setOfensorId] = useState(() => leerBorrador(trabajo.id)?.ofensorId ?? "");
+  const [tipoTrabajoId, setTipoTrabajoId] = useState(
+    () => leerBorrador(trabajo.id)?.tipoTrabajoId ?? ""
+  );
   const [hayBorradorRestaurado] = useState(() => leerBorrador(trabajo.id) !== null);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<MensajeState>(null);
   const [reintentandoAlVolverSenal, setReintentandoAlVolverSenal] = useState(false);
 
   useEffect(() => {
-    guardarBorrador(trabajo.id, { avances, comentario, ofensorId });
+    guardarBorrador(trabajo.id, { avances, comentario, ofensorId, tipoTrabajoId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [avances, comentario, ofensorId]);
+  }, [avances, comentario, ofensorId, tipoTrabajoId]);
 
   const [historial, setHistorial] = useState<AvanceDiario[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
@@ -248,8 +259,13 @@ function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
       return;
     }
 
-    if (detalles.length === 0 && !comentarioLimpio && !ofensorId) {
-      setMensaje({ type: "error", text: "Ingresa al menos un avance, un comentario o un ofensor." });
+    if (!tipoTrabajoId) {
+      setMensaje({ type: "error", text: "Selecciona el tipo de trabajo realizado hoy." });
+      return;
+    }
+
+    if (detalles.length === 0 && !comentarioLimpio) {
+      setMensaje({ type: "error", text: "Ingresa al menos un avance o un comentario." });
       return;
     }
 
@@ -263,6 +279,7 @@ function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
           comentario: comentarioLimpio || null,
           detalles,
           ofensor_id: ofensorId || null,
+          tipo_trabajo_id: tipoTrabajoId || null,
         }),
       });
 
@@ -272,6 +289,7 @@ function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
         setAvances({});
         setComentario("");
         setOfensorId("");
+        setTipoTrabajoId("");
         borrarBorrador(trabajo.id);
         setReintentandoAlVolverSenal(false);
         setMensaje({ type: "success", text: "Avance guardado con exito." });
@@ -551,25 +569,51 @@ function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
                   placeholder="Describe lo que realmente se avanzo hoy..."
                 />
 
-                <label
-                  htmlFor={`ofensor-${trabajo.id}`}
-                  className="block text-sm font-medium text-slate-700 mb-1 mt-3"
-                >
-                  Ofensor (si algo impidio avanzar hoy)
-                </label>
-                <select
-                  id={`ofensor-${trabajo.id}`}
-                  value={ofensorId}
-                  onChange={(e) => setOfensorId(e.target.value)}
-                  className="w-full sm:w-72 rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
-                >
-                  <option value="">Ninguno</option>
-                  {catalogoOfensor.map((opcion) => (
-                    <option key={opcion.id} value={opcion.id}>
-                      {opcion.valor}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-col sm:flex-row gap-4 mt-3">
+                  <div className="flex-1">
+                    <label
+                      htmlFor={`tipo-trabajo-${trabajo.id}`}
+                      className="block text-sm font-medium text-slate-700 mb-1"
+                    >
+                      Tipo de trabajo realizado hoy <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      id={`tipo-trabajo-${trabajo.id}`}
+                      value={tipoTrabajoId}
+                      onChange={(e) => setTipoTrabajoId(e.target.value)}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                    >
+                      <option value="">Selecciona una opcion...</option>
+                      {catalogoTipoTrabajo.map((opcion) => (
+                        <option key={opcion.id} value={opcion.id}>
+                          {opcion.valor}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex-1">
+                    <label
+                      htmlFor={`ofensor-${trabajo.id}`}
+                      className="block text-sm font-medium text-slate-700 mb-1"
+                    >
+                      Ofensor (si algo impidio avanzar hoy)
+                    </label>
+                    <select
+                      id={`ofensor-${trabajo.id}`}
+                      value={ofensorId}
+                      onChange={(e) => setOfensorId(e.target.value)}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                    >
+                      <option value="">Ninguno</option>
+                      {catalogoOfensor.map((opcion) => (
+                        <option key={opcion.id} value={opcion.id}>
+                          {opcion.valor}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
                 {mensaje && (
                   <p
@@ -604,6 +648,11 @@ function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
                         {formatearFecha(avance.created_at)}
                       </span>
                       {avance.comentario && <p className="mt-0.5">{avance.comentario}</p>}
+                      {avance.tipo_trabajo_valor && (
+                        <p className="mt-0.5 text-xs font-medium text-slate-500">
+                          Tipo de trabajo: {avance.tipo_trabajo_valor}
+                        </p>
+                      )}
                       {avance.ofensor_valor && (
                         <p className="mt-0.5 text-xs font-medium text-amber-700">
                           Ofensor: {avance.ofensor_valor}
@@ -636,6 +685,7 @@ export default function MisTrabajosPanel() {
   const [error, setError] = useState<string | null>(null);
   const [mostrandoCacheDe, setMostrandoCacheDe] = useState<string | null>(null);
   const [catalogoOfensor, setCatalogoOfensor] = useState<CatalogoOpcion[]>([]);
+  const [catalogoTipoTrabajo, setCatalogoTipoTrabajo] = useState<CatalogoOpcion[]>([]);
 
   const cargarCatalogoOfensor = async () => {
     try {
@@ -643,6 +693,17 @@ export default function MisTrabajosPanel() {
       if (!res.ok) throw new Error();
       const data: CatalogoOpcion[] = await res.json();
       setCatalogoOfensor(data);
+    } catch {
+      // silencioso: el select simplemente queda vacio si falla
+    }
+  };
+
+  const cargarCatalogoTipoTrabajo = async () => {
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/catalogo?categoria=tipo_trabajo`);
+      if (!res.ok) throw new Error();
+      const data: CatalogoOpcion[] = await res.json();
+      setCatalogoTipoTrabajo(data);
     } catch {
       // silencioso: el select simplemente queda vacio si falla
     }
@@ -674,6 +735,7 @@ export default function MisTrabajosPanel() {
   useEffect(() => {
     cargarMisTrabajos();
     cargarCatalogoOfensor();
+    cargarCatalogoTipoTrabajo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -709,7 +771,12 @@ export default function MisTrabajosPanel() {
 
       <div className="space-y-6">
         {trabajos.map((trabajo) => (
-          <TrabajoCard key={trabajo.id} trabajo={trabajo} catalogoOfensor={catalogoOfensor} />
+          <TrabajoCard
+            key={trabajo.id}
+            trabajo={trabajo}
+            catalogoOfensor={catalogoOfensor}
+            catalogoTipoTrabajo={catalogoTipoTrabajo}
+          />
         ))}
       </div>
     </div>

@@ -77,6 +77,8 @@ export type AvanceDiario = {
   detalles: AvanceDetalle[];
   ofensor_id: string | null;
   ofensor_valor: string | null;
+  tipo_trabajo_id: string | null;
+  tipo_trabajo_valor: string | null;
 };
 
 export type AvanceResumenDetalle = {

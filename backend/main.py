@@ -419,6 +419,7 @@ class AvanceDiarioCreate(BaseModel):
     comentario: str | None = None
     detalles: list[AvanceDetalleIn] = []
     ofensor_id: str | None = None
+    tipo_trabajo_id: str | None = None
 
     @field_validator("comentario")
     @classmethod
@@ -442,6 +443,8 @@ class AvanceDiarioOut(BaseModel):
     detalles: list[AvanceDetalleOut] = []
     ofensor_id: str | None = None
     ofensor_valor: str | None = None
+    tipo_trabajo_id: str | None = None
+    tipo_trabajo_valor: str | None = None
 
 
 class AvanceResumenDetalle(BaseModel):
@@ -1581,13 +1584,20 @@ def registrar_avance_diario(
     para llevar la bitacora dia a dia."""
     obtener_trabajo_del_lider(trabajo_id, usuario.id)
 
-    if not payload.comentario and not payload.detalles and not payload.ofensor_id:
+    if not payload.tipo_trabajo_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ingresa al menos un avance, un comentario o un ofensor.",
+            detail="Selecciona el tipo de trabajo realizado hoy.",
+        )
+
+    if not payload.comentario and not payload.detalles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ingresa al menos un avance o un comentario.",
         )
 
     ofensor_valor = _resolver_opcion_catalogo(payload.ofensor_id, "ofensor")
+    tipo_trabajo_valor = _resolver_opcion_catalogo(payload.tipo_trabajo_id, "tipo_trabajo")
 
     if payload.detalles:
         try:
@@ -1644,6 +1654,7 @@ def registrar_avance_diario(
                     "lider_id": usuario.id,
                     "comentario": payload.comentario,
                     "ofensor_id": payload.ofensor_id,
+                    "tipo_trabajo_id": payload.tipo_trabajo_id,
                 }
             )
             .execute()
@@ -1688,6 +1699,7 @@ def registrar_avance_diario(
 
     avance_diario["detalles"] = detalles_guardados
     avance_diario["ofensor_valor"] = ofensor_valor
+    avance_diario["tipo_trabajo_valor"] = tipo_trabajo_valor
     return avance_diario
 
 
@@ -1707,8 +1719,9 @@ def listar_avances_diarios(
         avances_resp = (
             supabase.table("avances_diarios")
             .select(
-                "id, trabajo_id, comentario, created_at, ofensor_id, "
-                "ofensor:catalogo_opciones!ofensor_id(valor)"
+                "id, trabajo_id, comentario, created_at, ofensor_id, tipo_trabajo_id, "
+                "ofensor:catalogo_opciones!ofensor_id(valor), "
+                "tipo_trabajo:catalogo_opciones!tipo_trabajo_id(valor)"
             )
             .eq("trabajo_id", trabajo_id)
             .order("created_at", desc=True)
@@ -1746,6 +1759,8 @@ def listar_avances_diarios(
         avance["detalles"] = detalles_por_avance.get(avance["id"], [])
         ofensor = avance.pop("ofensor", None) or {}
         avance["ofensor_valor"] = ofensor.get("valor")
+        tipo_trabajo = avance.pop("tipo_trabajo", None) or {}
+        avance["tipo_trabajo_valor"] = tipo_trabajo.get("valor")
 
     return avances
 

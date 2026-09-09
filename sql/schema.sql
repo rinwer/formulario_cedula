@@ -427,6 +427,15 @@ alter table public.avances_diarios
   add column if not exists ofensor_id uuid references public.catalogo_opciones (id) on delete set null;
 comment on column public.avances_diarios.ofensor_id is 'Motivo de bloqueo/atraso marcado por el lider al reportar (lluvia, sin acceso, etc.), de catalogo_opciones.';
 
+-- Tipo de trabajo ejecutado ESE dia: obligatorio (lo exige el backend),
+-- lo marca el lider al reportar (puede diferir del tipo_trabajo_id fijo
+-- de su perfil, ej. un lider de Instalacion que un dia hace CW). La
+-- columna admite null solo porque puede haber avances viejos guardados
+-- antes de que este campo existiera.
+alter table public.avances_diarios
+  add column if not exists tipo_trabajo_id uuid references public.catalogo_opciones (id) on delete set null;
+comment on column public.avances_diarios.tipo_trabajo_id is 'Tipo de trabajo que el lider ejecuto ese dia (obligatorio al reportar; puede diferir del de su perfil), de catalogo_opciones.';
+
 -- ---------------------------------------------------------
 -- 10. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------
