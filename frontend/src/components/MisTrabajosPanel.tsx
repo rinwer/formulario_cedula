@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
-import { AvanceDiario, TrabajoConActividades } from "../types";
+import { AvanceDiario, CatalogoOpcion, TrabajoConActividades } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -31,7 +31,7 @@ function qtyNumerico(qty: string | null): number | null {
 // alcanzado a guardar) es el peor escenario posible. Se guarda en
 // localStorage (nunca llega al servidor) y se borra solo cuando el
 // avance se guarda con exito.
-type BorradorAvance = { avances: Record<string, string>; comentario: string };
+type BorradorAvance = { avances: Record<string, string>; comentario: string; ofensorId: string };
 
 function claveBorrador(trabajoId: string): string {
   return `avance-borrador-${trabajoId}`;
@@ -47,6 +47,7 @@ function leerBorrador(trabajoId: string): BorradorAvance | null {
       avances:
         typeof datos.avances === "object" && datos.avances !== null ? datos.avances : {},
       comentario: typeof datos.comentario === "string" ? datos.comentario : "",
+      ofensorId: typeof datos.ofensorId === "string" ? datos.ofensorId : "",
     };
   } catch {
     return null;
@@ -57,6 +58,7 @@ function guardarBorrador(trabajoId: string, borrador: BorradorAvance): void {
   try {
     const hayContenido =
       borrador.comentario.trim() !== "" ||
+      borrador.ofensorId !== "" ||
       Object.values(borrador.avances).some((v) => v.trim() !== "");
     if (!hayContenido) {
       localStorage.removeItem(claveBorrador(trabajoId));
@@ -106,24 +108,26 @@ function guardarCacheTrabajos(datos: TrabajoConActividades[]): void {
 
 type TrabajoCardProps = {
   trabajo: TrabajoConActividades;
+  catalogoOfensor: CatalogoOpcion[];
 };
 
-function TrabajoCard({ trabajo }: TrabajoCardProps) {
+function TrabajoCard({ trabajo, catalogoOfensor }: TrabajoCardProps) {
   const [expandido, setExpandido] = useState(false);
 
   const [avances, setAvances] = useState<Record<string, string>>(
     () => leerBorrador(trabajo.id)?.avances ?? {}
   );
   const [comentario, setComentario] = useState(() => leerBorrador(trabajo.id)?.comentario ?? "");
+  const [ofensorId, setOfensorId] = useState(() => leerBorrador(trabajo.id)?.ofensorId ?? "");
   const [hayBorradorRestaurado] = useState(() => leerBorrador(trabajo.id) !== null);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<MensajeState>(null);
   const [reintentandoAlVolverSenal, setReintentandoAlVolverSenal] = useState(false);
 
   useEffect(() => {
-    guardarBorrador(trabajo.id, { avances, comentario });
+    guardarBorrador(trabajo.id, { avances, comentario, ofensorId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [avances, comentario]);
+  }, [avances, comentario, ofensorId]);
 
   const [historial, setHistorial] = useState<AvanceDiario[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
@@ -244,8 +248,8 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
       return;
     }
 
-    if (detalles.length === 0 && !comentarioLimpio) {
-      setMensaje({ type: "error", text: "Ingresa al menos un avance o un comentario." });
+    if (detalles.length === 0 && !comentarioLimpio && !ofensorId) {
+      setMensaje({ type: "error", text: "Ingresa al menos un avance, un comentario o un ofensor." });
       return;
     }
 
@@ -255,7 +259,11 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
       const res = await fetchAutenticado(`${API_URL}/api/mis-trabajos/${trabajo.id}/avances`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comentario: comentarioLimpio || null, detalles }),
+        body: JSON.stringify({
+          comentario: comentarioLimpio || null,
+          detalles,
+          ofensor_id: ofensorId || null,
+        }),
       });
 
       if (res.ok) {
@@ -263,6 +271,7 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
         setHistorial((prev) => [nuevo, ...prev]);
         setAvances({});
         setComentario("");
+        setOfensorId("");
         borrarBorrador(trabajo.id);
         setReintentandoAlVolverSenal(false);
         setMensaje({ type: "success", text: "Avance guardado con exito." });
@@ -542,6 +551,26 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
                   placeholder="Describe lo que realmente se avanzo hoy..."
                 />
 
+                <label
+                  htmlFor={`ofensor-${trabajo.id}`}
+                  className="block text-sm font-medium text-slate-700 mb-1 mt-3"
+                >
+                  Ofensor (si algo impidio avanzar hoy)
+                </label>
+                <select
+                  id={`ofensor-${trabajo.id}`}
+                  value={ofensorId}
+                  onChange={(e) => setOfensorId(e.target.value)}
+                  className="w-full sm:w-72 rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                >
+                  <option value="">Ninguno</option>
+                  {catalogoOfensor.map((opcion) => (
+                    <option key={opcion.id} value={opcion.id}>
+                      {opcion.valor}
+                    </option>
+                  ))}
+                </select>
+
                 {mensaje && (
                   <p
                     className={
@@ -575,6 +604,11 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
                         {formatearFecha(avance.created_at)}
                       </span>
                       {avance.comentario && <p className="mt-0.5">{avance.comentario}</p>}
+                      {avance.ofensor_valor && (
+                        <p className="mt-0.5 text-xs font-medium text-amber-700">
+                          Ofensor: {avance.ofensor_valor}
+                        </p>
+                      )}
                       {avance.detalles.length > 0 && (
                         <p className="mt-0.5 text-xs text-slate-500">
                           {avance.detalles
@@ -601,6 +635,18 @@ export default function MisTrabajosPanel() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mostrandoCacheDe, setMostrandoCacheDe] = useState<string | null>(null);
+  const [catalogoOfensor, setCatalogoOfensor] = useState<CatalogoOpcion[]>([]);
+
+  const cargarCatalogoOfensor = async () => {
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/catalogo?categoria=ofensor`);
+      if (!res.ok) throw new Error();
+      const data: CatalogoOpcion[] = await res.json();
+      setCatalogoOfensor(data);
+    } catch {
+      // silencioso: el select simplemente queda vacio si falla
+    }
+  };
 
   const cargarMisTrabajos = async () => {
     setCargando(true);
@@ -627,6 +673,7 @@ export default function MisTrabajosPanel() {
 
   useEffect(() => {
     cargarMisTrabajos();
+    cargarCatalogoOfensor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -662,7 +709,7 @@ export default function MisTrabajosPanel() {
 
       <div className="space-y-6">
         {trabajos.map((trabajo) => (
-          <TrabajoCard key={trabajo.id} trabajo={trabajo} />
+          <TrabajoCard key={trabajo.id} trabajo={trabajo} catalogoOfensor={catalogoOfensor} />
         ))}
       </div>
     </div>

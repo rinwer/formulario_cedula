@@ -118,6 +118,12 @@ def get_usuario_actual(
 
 ROLES_VALIDOS = ("administrador", "coordinador", "visualizador", "lider_cuadrilla")
 
+# Categorias de catalogo_opciones: listas editables desde Perfiles (sin
+# tocar codigo) para el tipo de trabajo del lider (Instalacion/
+# Integracion/CW/...) y el ofensor que marca al reportar el avance del
+# dia (lluvia, sin acceso, etc.).
+CATEGORIAS_CATALOGO = ("tipo_trabajo", "ofensor")
+
 
 def requerir_administrador(
     usuario: UsuarioActual = Depends(get_usuario_actual),
@@ -171,6 +177,7 @@ class UsuarioCreate(BaseModel):
     )
     nombre_completo: str = Field(..., min_length=1)
     role: str = "lider_cuadrilla"
+    tipo_trabajo_id: str | None = None
 
     @field_validator("nombre_completo")
     @classmethod
@@ -194,6 +201,8 @@ class UsuarioOut(BaseModel):
     nombre_completo: str
     role: str
     activo: bool = True
+    tipo_trabajo_id: str | None = None
+    tipo_trabajo_valor: str | None = None
 
 
 class LiderOut(BaseModel):
@@ -216,6 +225,7 @@ class PerfilUpdate(BaseModel):
     password: str | None = Field(
         default=None, description="Dejar vacio para no cambiar la contrasena"
     )
+    tipo_trabajo_id: str | None = None
 
     @field_validator("nombre_completo")
     @classmethod
@@ -242,11 +252,74 @@ class PerfilUpdate(BaseModel):
         return value
 
 
+class CatalogoOpcionOut(BaseModel):
+    id: str
+    categoria: str
+    valor: str
+    activo: bool = True
+
+
+class CatalogoOpcionCreate(BaseModel):
+    categoria: str
+    valor: str = Field(..., min_length=1)
+
+    @field_validator("categoria")
+    @classmethod
+    def categoria_valida(cls, value: str) -> str:
+        if value not in CATEGORIAS_CATALOGO:
+            raise ValueError(f"La categoria debe ser una de: {', '.join(CATEGORIAS_CATALOGO)}")
+        return value
+
+    @field_validator("valor")
+    @classmethod
+    def valor_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("El valor no puede estar vacio")
+        return value
+
+
+class CatalogoOpcionUpdate(BaseModel):
+    valor: str = Field(..., min_length=1)
+    activo: bool = True
+
+    @field_validator("valor")
+    @classmethod
+    def valor_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("El valor no puede estar vacio")
+        return value
+
+
 def _campo_no_vacio(value: str, nombre_campo: str) -> str:
     value = value.strip()
     if not value:
         raise ValueError(f"{nombre_campo} no puede estar vacio")
     return value
+
+
+def _resolver_opcion_catalogo(opcion_id: str | None, categoria: str) -> str | None:
+    """Valida que opcion_id exista en catalogo_opciones con esa categoria
+    y devuelve su valor (para no guardar un id suelto que no corresponda
+    a nada, y para poder devolver el texto ya resuelto en la respuesta)."""
+    if not opcion_id:
+        return None
+    try:
+        resp = (
+            supabase.table("catalogo_opciones")
+            .select("valor")
+            .eq("id", opcion_id)
+            .eq("categoria", categoria)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La opcion de '{categoria}' indicada no existe.",
+        ) from exc
+    return resp.data["valor"]
 
 
 ESTADOS_TRABAJO = ("asignado", "finalizado", "standby")
@@ -345,6 +418,7 @@ class AvanceDetalleIn(BaseModel):
 class AvanceDiarioCreate(BaseModel):
     comentario: str | None = None
     detalles: list[AvanceDetalleIn] = []
+    ofensor_id: str | None = None
 
     @field_validator("comentario")
     @classmethod
@@ -366,6 +440,8 @@ class AvanceDiarioOut(BaseModel):
     comentario: str | None
     created_at: str
     detalles: list[AvanceDetalleOut] = []
+    ofensor_id: str | None = None
+    ofensor_valor: str | None = None
 
 
 class AvanceResumenDetalle(BaseModel):
@@ -573,7 +649,10 @@ def listar_usuarios(
     try:
         response = (
             supabase.table("profiles")
-            .select("id, email, nombre_completo, role, activo")
+            .select(
+                "id, email, nombre_completo, role, activo, tipo_trabajo_id, "
+                "tipo_trabajo:catalogo_opciones!tipo_trabajo_id(valor)"
+            )
             .order("created_at", desc=True)
             .execute()
         )
@@ -583,7 +662,11 @@ def listar_usuarios(
             detail="Error interno al obtener los usuarios.",
         ) from exc
 
-    return response.data or []
+    usuarios = response.data or []
+    for usuario in usuarios:
+        tipo_trabajo = usuario.pop("tipo_trabajo", None) or {}
+        usuario["tipo_trabajo_valor"] = tipo_trabajo.get("valor")
+    return usuarios
 
 
 @app.get("/api/admin/lideres", response_model=list[LiderOut])
@@ -647,6 +730,10 @@ def actualizar_usuario(
                 detail="No puedes deshabilitar tu propia cuenta.",
             )
 
+    # Se valida ANTES de tocar Auth, para no dejar a medias las
+    # credenciales si el tipo de trabajo resulta invalido.
+    tipo_trabajo_valor = _resolver_opcion_catalogo(payload.tipo_trabajo_id, "tipo_trabajo")
+
     # Credenciales (email/password) y habilitado/deshabilitado viven en
     # Supabase Auth, no en public.profiles: se actualizan con la Admin API.
     atributos_auth: dict = {
@@ -680,6 +767,7 @@ def actualizar_usuario(
                     "email": payload.email,
                     "role": payload.role,
                     "activo": payload.activo,
+                    "tipo_trabajo_id": payload.tipo_trabajo_id,
                 }
             )
             .eq("id", usuario_id)
@@ -697,7 +785,9 @@ def actualizar_usuario(
             detail="No se encontro un usuario con ese id.",
         )
 
-    return response.data[0]
+    actualizado = response.data[0]
+    actualizado["tipo_trabajo_valor"] = tipo_trabajo_valor
+    return actualizado
 
 
 @app.post(
@@ -715,6 +805,8 @@ def crear_usuario(
     por lo que la sesion del administrador que hace la peticion (su propio
     access token, validado arriba) no se ve afectada en ningun momento.
     """
+    tipo_trabajo_valor = _resolver_opcion_catalogo(payload.tipo_trabajo_id, "tipo_trabajo")
+
     try:
         creado = supabase.auth.admin.create_user(
             {
@@ -744,13 +836,160 @@ def crear_usuario(
             detail="No se pudo confirmar la creacion del usuario.",
         )
 
+    # El trigger que crea la fila en profiles (ver handle_new_user en
+    # schema.sql) solo copia nombre_completo y role desde los metadatos de
+    # Auth; el tipo de trabajo se completa aparte con un update.
+    if payload.tipo_trabajo_id:
+        try:
+            supabase.table("profiles").update(
+                {"tipo_trabajo_id": payload.tipo_trabajo_id}
+            ).eq("id", nuevo_usuario.id).execute()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="El usuario se creo, pero no se pudo asignar el tipo de trabajo.",
+            ) from exc
+
     return {
         "id": nuevo_usuario.id,
         "email": nuevo_usuario.email,
         "nombre_completo": payload.nombre_completo,
         "role": payload.role,
         "activo": True,
+        "tipo_trabajo_id": payload.tipo_trabajo_id,
+        "tipo_trabajo_valor": tipo_trabajo_valor,
     }
+
+
+@app.get("/api/catalogo", response_model=list[CatalogoOpcionOut])
+def listar_catalogo(
+    categoria: str = Query(..., description="tipo_trabajo o ofensor"),
+    _usuario: UsuarioActual = Depends(get_usuario_actual),
+) -> list[dict]:
+    """Opciones ACTIVAS de un catalogo, para llenar un desplegable.
+    Cualquier usuario autenticado puede leerlo (lo necesita tanto el
+    lider al reportar el avance -- ofensor -- como el administrador al
+    editar un perfil -- tipo_trabajo); solo administrar el catalogo esta
+    restringido (ver /api/admin/catalogo)."""
+    if categoria not in CATEGORIAS_CATALOGO:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La categoria debe ser una de: {', '.join(CATEGORIAS_CATALOGO)}",
+        )
+    try:
+        resp = (
+            supabase.table("catalogo_opciones")
+            .select("id, categoria, valor, activo")
+            .eq("categoria", categoria)
+            .eq("activo", True)
+            .order("valor")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el catalogo.",
+        ) from exc
+    return resp.data or []
+
+
+@app.get("/api/admin/catalogo", response_model=list[CatalogoOpcionOut])
+def listar_catalogo_admin(
+    categoria: str = Query(..., description="tipo_trabajo o ofensor"),
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> list[dict]:
+    """Igual que /api/catalogo pero incluye las opciones desactivadas,
+    para poder reactivarlas desde Perfiles."""
+    if categoria not in CATEGORIAS_CATALOGO:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La categoria debe ser una de: {', '.join(CATEGORIAS_CATALOGO)}",
+        )
+    try:
+        resp = (
+            supabase.table("catalogo_opciones")
+            .select("id, categoria, valor, activo")
+            .eq("categoria", categoria)
+            .order("valor")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener el catalogo.",
+        ) from exc
+    return resp.data or []
+
+
+@app.post(
+    "/api/admin/catalogo",
+    response_model=CatalogoOpcionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_opcion_catalogo(
+    payload: CatalogoOpcionCreate,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    try:
+        resp = (
+            supabase.table("catalogo_opciones")
+            .insert({"categoria": payload.categoria, "valor": payload.valor})
+            .execute()
+        )
+    except Exception as exc:
+        mensaje = str(exc).lower()
+        if "duplicate" in mensaje or "catalogo_opciones_categoria_valor_key" in mensaje:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe esa opcion en el catalogo.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al crear la opcion.",
+        ) from exc
+
+    if not resp.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo confirmar la creacion de la opcion.",
+        )
+    return resp.data[0]
+
+
+@app.put("/api/admin/catalogo/{opcion_id}", response_model=CatalogoOpcionOut)
+def actualizar_opcion_catalogo(
+    opcion_id: str,
+    payload: CatalogoOpcionUpdate,
+    _admin: UsuarioActual = Depends(requerir_administrador),
+) -> dict:
+    """Renombra una opcion y/o la activa-desactiva. No se borra de verdad:
+    un avance o un perfil viejo puede seguir apuntando a esa opcion, y
+    borrarla de la base rompería esa referencia historica."""
+    try:
+        resp = (
+            supabase.table("catalogo_opciones")
+            .update({"valor": payload.valor, "activo": payload.activo})
+            .eq("id", opcion_id)
+            .execute()
+        )
+    except Exception as exc:
+        mensaje = str(exc).lower()
+        if "duplicate" in mensaje or "catalogo_opciones_categoria_valor_key" in mensaje:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe esa opcion en el catalogo.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al actualizar la opcion.",
+        ) from exc
+
+    if not resp.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro esa opcion en el catalogo.",
+        )
+    return resp.data[0]
 
 
 @app.get("/api/admin/trabajos", response_model=list[TrabajoOut])
@@ -1342,11 +1581,13 @@ def registrar_avance_diario(
     para llevar la bitacora dia a dia."""
     obtener_trabajo_del_lider(trabajo_id, usuario.id)
 
-    if not payload.comentario and not payload.detalles:
+    if not payload.comentario and not payload.detalles and not payload.ofensor_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ingresa al menos un avance o un comentario.",
+            detail="Ingresa al menos un avance, un comentario o un ofensor.",
         )
+
+    ofensor_valor = _resolver_opcion_catalogo(payload.ofensor_id, "ofensor")
 
     if payload.detalles:
         try:
@@ -1402,6 +1643,7 @@ def registrar_avance_diario(
                     "trabajo_id": trabajo_id,
                     "lider_id": usuario.id,
                     "comentario": payload.comentario,
+                    "ofensor_id": payload.ofensor_id,
                 }
             )
             .execute()
@@ -1445,6 +1687,7 @@ def registrar_avance_diario(
             ) from exc
 
     avance_diario["detalles"] = detalles_guardados
+    avance_diario["ofensor_valor"] = ofensor_valor
     return avance_diario
 
 
@@ -1463,7 +1706,10 @@ def listar_avances_diarios(
     try:
         avances_resp = (
             supabase.table("avances_diarios")
-            .select("id, trabajo_id, comentario, created_at")
+            .select(
+                "id, trabajo_id, comentario, created_at, ofensor_id, "
+                "ofensor:catalogo_opciones!ofensor_id(valor)"
+            )
             .eq("trabajo_id", trabajo_id)
             .order("created_at", desc=True)
             .execute()
@@ -1498,6 +1744,8 @@ def listar_avances_diarios(
 
     for avance in avances:
         avance["detalles"] = detalles_por_avance.get(avance["id"], [])
+        ofensor = avance.pop("ofensor", None) or {}
+        avance["ofensor_valor"] = ofensor.get("valor")
 
     return avances
 

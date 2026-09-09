@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
-import { Rol, Usuario } from "../types";
+import { CatalogoOpcion, CategoriaCatalogo, Rol, Usuario } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -40,6 +40,7 @@ export default function PerfilesPanel() {
   const [password, setPassword] = useState("");
   const [nombreCompleto, setNombreCompleto] = useState("");
   const [role, setRole] = useState<Rol>("lider_cuadrilla");
+  const [tipoTrabajoId, setTipoTrabajoId] = useState("");
   const [errores, setErrores] = useState<{ email?: string; password?: string; nombre?: string }>(
     {}
   );
@@ -51,12 +52,15 @@ export default function PerfilesPanel() {
   const [errorLista, setErrorLista] = useState<string | null>(null);
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
 
+  const [catalogoTipoTrabajo, setCatalogoTipoTrabajo] = useState<CatalogoOpcion[]>([]);
+
   const [idEditando, setIdEditando] = useState<string | null>(null);
   const [nombreEditado, setNombreEditado] = useState("");
   const [emailEditado, setEmailEditado] = useState("");
   const [passwordEditado, setPasswordEditado] = useState("");
   const [rolEditado, setRolEditado] = useState<Rol>("lider_cuadrilla");
   const [activoEditado, setActivoEditado] = useState(true);
+  const [tipoTrabajoIdEditado, setTipoTrabajoIdEditado] = useState("");
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
@@ -110,6 +114,7 @@ export default function PerfilesPanel() {
     setPasswordEditado("");
     setRolEditado(usuario.role);
     setActivoEditado(usuario.activo);
+    setTipoTrabajoIdEditado(usuario.tipo_trabajo_id ?? "");
     setErrorEdicion(null);
   };
 
@@ -139,6 +144,7 @@ export default function PerfilesPanel() {
           role: rolEditado,
           activo: activoEditado,
           password: passwordEditado || null,
+          tipo_trabajo_id: rolEditado === "lider_cuadrilla" ? tipoTrabajoIdEditado || null : null,
         }),
       });
 
@@ -172,8 +178,20 @@ export default function PerfilesPanel() {
     }
   };
 
+  const cargarCatalogoTipoTrabajo = async () => {
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/catalogo?categoria=tipo_trabajo`);
+      if (!res.ok) throw new Error();
+      const data: CatalogoOpcion[] = await res.json();
+      setCatalogoTipoTrabajo(data);
+    } catch {
+      // silencioso: el select simplemente queda vacio si falla
+    }
+  };
+
   useEffect(() => {
     cargarUsuarios();
+    cargarCatalogoTipoTrabajo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -206,6 +224,7 @@ export default function PerfilesPanel() {
           password,
           nombre_completo: nombreCompleto.trim(),
           role,
+          tipo_trabajo_id: role === "lider_cuadrilla" ? tipoTrabajoId || null : null,
         }),
       });
 
@@ -219,6 +238,7 @@ export default function PerfilesPanel() {
         setPassword("");
         setNombreCompleto("");
         setRole("lider_cuadrilla");
+        setTipoTrabajoId("");
         cargarUsuarios();
       } else if (res.status === 409) {
         setPopup({
@@ -297,6 +317,29 @@ export default function PerfilesPanel() {
               <option value="administrador">Administrador</option>
             </select>
           </div>
+
+          {role === "lider_cuadrilla" && (
+            <div>
+              <label htmlFor="tipoTrabajo" className="block text-sm font-medium text-slate-700 mb-1">
+                Tipo de trabajo
+              </label>
+              <select
+                id="tipoTrabajo"
+                value={tipoTrabajoId}
+                onChange={(e) => setTipoTrabajoId(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+              >
+                <option value="">Sin definir</option>
+                {catalogoTipoTrabajo
+                  .filter((opcion) => opcion.activo)
+                  .map((opcion) => (
+                    <option key={opcion.id} value={opcion.id}>
+                      {opcion.valor}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
           <div className="sm:col-span-2">
             <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
@@ -424,25 +467,48 @@ export default function PerfilesPanel() {
                       </td>
                       <td className="py-2 pr-4">
                         {editando ? (
-                          <select
-                            value={rolEditado}
-                            onChange={(e) => setRolEditado(e.target.value as Rol)}
-                            className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
-                          >
-                            <option value="lider_cuadrilla">Lider de cuadrilla</option>
-                            <option value="coordinador">Coordinador</option>
-                            <option value="visualizador">Visualizador</option>
-                            <option value="administrador">Administrador</option>
-                          </select>
+                          <div className="space-y-1 min-w-[160px]">
+                            <select
+                              value={rolEditado}
+                              onChange={(e) => setRolEditado(e.target.value as Rol)}
+                              className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            >
+                              <option value="lider_cuadrilla">Lider de cuadrilla</option>
+                              <option value="coordinador">Coordinador</option>
+                              <option value="visualizador">Visualizador</option>
+                              <option value="administrador">Administrador</option>
+                            </select>
+                            {rolEditado === "lider_cuadrilla" && (
+                              <select
+                                value={tipoTrabajoIdEditado}
+                                onChange={(e) => setTipoTrabajoIdEditado(e.target.value)}
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                              >
+                                <option value="">Tipo de trabajo: sin definir</option>
+                                {catalogoTipoTrabajo
+                                  .filter((opcion) => opcion.activo)
+                                  .map((opcion) => (
+                                    <option key={opcion.id} value={opcion.id}>
+                                      {opcion.valor}
+                                    </option>
+                                  ))}
+                              </select>
+                            )}
+                          </div>
                         ) : (
-                          <span
-                            className={
-                              "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
-                              (ROLE_BADGE[usuario.role] ?? "bg-slate-200 text-slate-600")
-                            }
-                          >
-                            {ROLE_LABEL[usuario.role] ?? usuario.role}
-                          </span>
+                          <div className="space-y-1">
+                            <span
+                              className={
+                                "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                                (ROLE_BADGE[usuario.role] ?? "bg-slate-200 text-slate-600")
+                              }
+                            >
+                              {ROLE_LABEL[usuario.role] ?? usuario.role}
+                            </span>
+                            {usuario.role === "lider_cuadrilla" && usuario.tipo_trabajo_valor && (
+                              <p className="text-xs text-slate-500">{usuario.tipo_trabajo_valor}</p>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="py-2 pr-4">
@@ -514,6 +580,23 @@ export default function PerfilesPanel() {
         )}
       </div>
 
+      <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
+        <h2 className="text-lg font-semibold text-slate-800 mb-2">Catalogos</h2>
+        <p className="text-sm text-slate-500 mb-6">
+          Agrega o desactiva las opciones de tipo de trabajo (perfil del lider) y de ofensores
+          (avance diario). Nunca se eliminan para no romper un perfil o un avance que ya apunte a
+          esa opcion.
+        </p>
+        <div className="grid gap-8 sm:grid-cols-2">
+          <CatalogoManager
+            categoria="tipo_trabajo"
+            titulo="Tipo de trabajo"
+            onChange={cargarCatalogoTipoTrabajo}
+          />
+          <CatalogoManager categoria="ofensor" titulo="Ofensores" />
+        </div>
+      </div>
+
       {popup.visible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-lg max-w-sm w-full p-6 text-center">
@@ -545,6 +628,153 @@ export default function PerfilesPanel() {
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function CatalogoManager({
+  categoria,
+  titulo,
+  onChange,
+}: {
+  categoria: CategoriaCatalogo;
+  titulo: string;
+  onChange?: () => void;
+}) {
+  const [opciones, setOpciones] = useState<CatalogoOpcion[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [nuevoValor, setNuevoValor] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [actualizandoId, setActualizandoId] = useState<string | null>(null);
+
+  const cargar = async () => {
+    setCargando(true);
+    setError(null);
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/catalogo?categoria=${categoria}`);
+      if (!res.ok) throw new Error();
+      const data: CatalogoOpcion[] = await res.json();
+      setOpciones(data);
+    } catch {
+      setError("No se pudo cargar la lista.");
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => {
+    cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoria]);
+
+  const agregarOpcion = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!nuevoValor.trim()) return;
+    setGuardando(true);
+    setError(null);
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/catalogo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoria, valor: nuevoValor.trim() }),
+      });
+      if (res.status === 201) {
+        setNuevoValor("");
+        await cargar();
+        onChange?.();
+      } else if (res.status === 409) {
+        setError("Esa opcion ya existe.");
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.detail ?? "Ocurrio un error al agregar la opcion.");
+      }
+    } catch {
+      setError("No se pudo conectar con el servidor.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const alternarActivo = async (opcion: CatalogoOpcion) => {
+    setActualizandoId(opcion.id);
+    setError(null);
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/catalogo/${opcion.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ valor: opcion.valor, activo: !opcion.activo }),
+      });
+      if (res.ok) {
+        await cargar();
+        onChange?.();
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.detail ?? "Ocurrio un error al actualizar la opcion.");
+      }
+    } catch {
+      setError("No se pudo conectar con el servidor.");
+    } finally {
+      setActualizandoId(null);
+    }
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-slate-700 mb-2">{titulo}</h3>
+      <form onSubmit={agregarOpcion} className="flex gap-2 mb-3">
+        <input
+          type="text"
+          value={nuevoValor}
+          onChange={(e) => setNuevoValor(e.target.value)}
+          placeholder="Nueva opcion..."
+          className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+        />
+        <button
+          type="submit"
+          disabled={guardando || !nuevoValor.trim()}
+          className="bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 text-white text-sm font-medium px-3 py-1.5 rounded-md transition-colors"
+        >
+          {guardando ? "Agregando..." : "Agregar"}
+        </button>
+      </form>
+
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+
+      {cargando && opciones.length === 0 ? (
+        <p className="text-sm text-slate-500">Cargando...</p>
+      ) : opciones.length === 0 ? (
+        <p className="text-sm text-slate-500">Todavia no hay opciones.</p>
+      ) : (
+        <ul className="space-y-1">
+          {opciones.map((opcion) => (
+            <li
+              key={opcion.id}
+              className="flex items-center justify-between gap-2 rounded-md border border-slate-200 px-2 py-1.5"
+            >
+              <span
+                className={
+                  "text-sm " + (opcion.activo ? "text-slate-700" : "text-slate-400 line-through")
+                }
+              >
+                {opcion.valor}
+              </span>
+              <button
+                onClick={() => alternarActivo(opcion)}
+                disabled={actualizandoId === opcion.id}
+                className={
+                  "text-xs font-medium px-2 py-1 rounded-md " +
+                  (opcion.activo
+                    ? "text-slate-600 hover:text-slate-800"
+                    : "text-emerald-600 hover:text-emerald-800")
+                }
+              >
+                {actualizandoId === opcion.id ? "..." : opcion.activo ? "Desactivar" : "Activar"}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

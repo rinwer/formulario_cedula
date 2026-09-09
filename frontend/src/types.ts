@@ -13,6 +13,17 @@ export type Usuario = {
   nombre_completo: string;
   role: Rol;
   activo: boolean;
+  tipo_trabajo_id: string | null;
+  tipo_trabajo_valor: string | null;
+};
+
+export type CategoriaCatalogo = "tipo_trabajo" | "ofensor";
+
+export type CatalogoOpcion = {
+  id: string;
+  categoria: CategoriaCatalogo;
+  valor: string;
+  activo: boolean;
 };
 
 export type LiderLigero = {
@@ -64,6 +75,8 @@ export type AvanceDiario = {
   comentario: string | null;
   created_at: string;
   detalles: AvanceDetalle[];
+  ofensor_id: string | null;
+  ofensor_valor: string | null;
 };
 
 export type AvanceResumenDetalle = {

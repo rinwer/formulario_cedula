@@ -373,7 +373,62 @@ create trigger set_disponibilidad_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------
--- 9. Bootstrap del primer administrador (ejecutar una sola vez)
+-- 9. Tabla catalogo_opciones (listas editables sin tocar codigo)
+-- ---------------------------------------------------------
+-- Dos usos: el "tipo de trabajo" del lider_cuadrilla (Instalacion,
+-- Integracion, CW, ...) que se fija en su perfil, y el "ofensor" que el
+-- lider puede marcar al reportar el avance del dia (lluvia, sin acceso,
+-- etc.). El administrador agrega/renombra/desactiva opciones desde
+-- Perfiles; nunca se borran de verdad (solo se desactivan) para no
+-- romper un perfil o un avance viejo que ya apunte a esa opcion.
+
+create table if not exists public.catalogo_opciones (
+  id uuid primary key default gen_random_uuid(),
+  categoria text not null check (categoria in ('tipo_trabajo', 'ofensor')),
+  valor text not null check (length(trim(valor)) > 0),
+  activo boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+comment on table public.catalogo_opciones is 'Listas editables desde Perfiles: tipo de trabajo del lider y ofensores del avance diario.';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'catalogo_opciones_categoria_valor_key'
+  ) then
+    alter table public.catalogo_opciones
+      add constraint catalogo_opciones_categoria_valor_key unique (categoria, valor);
+  end if;
+end $$;
+
+create index if not exists idx_catalogo_opciones_categoria on public.catalogo_opciones (categoria);
+
+alter table public.catalogo_opciones enable row level security;
+
+insert into public.catalogo_opciones (categoria, valor)
+values
+  ('tipo_trabajo', 'Instalacion'),
+  ('tipo_trabajo', 'Integracion'),
+  ('tipo_trabajo', 'CW'),
+  ('ofensor', 'Lluvia'),
+  ('ofensor', 'Sin acceso al site'),
+  ('ofensor', 'Falta de material'),
+  ('ofensor', 'Orden publico / seguridad')
+on conflict (categoria, valor) do nothing;
+
+-- Tipo de trabajo del lider_cuadrilla: opcional, se fija en su perfil.
+alter table public.profiles
+  add column if not exists tipo_trabajo_id uuid references public.catalogo_opciones (id) on delete set null;
+comment on column public.profiles.tipo_trabajo_id is 'Tipo de trabajo del lider_cuadrilla (Instalacion/Integracion/CW/...), de catalogo_opciones.';
+
+-- Ofensor del avance diario: opcional, lo marca el lider al reportar.
+alter table public.avances_diarios
+  add column if not exists ofensor_id uuid references public.catalogo_opciones (id) on delete set null;
+comment on column public.avances_diarios.ofensor_id is 'Motivo de bloqueo/atraso marcado por el lider al reportar (lluvia, sin acceso, etc.), de catalogo_opciones.';
+
+-- ---------------------------------------------------------
+-- 10. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------
 -- No hay registro publico, asi que el primer administrador se crea a
 -- mano desde el Supabase Dashboard > Authentication > Users > Add user.
