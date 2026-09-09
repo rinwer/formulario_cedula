@@ -76,6 +76,34 @@ function borrarBorrador(trabajoId: string): void {
   }
 }
 
+// Cache de la ultima lista de trabajos que cargo bien: si la señal falla
+// justo al abrir la app, se muestra esta copia (con aviso) en vez de una
+// pantalla vacia. Nunca se usa para guardar avances, solo para ver.
+const CLAVE_CACHE_TRABAJOS = "mis-trabajos-cache";
+
+type CacheTrabajos = { datos: TrabajoConActividades[]; guardadoEn: string };
+
+function leerCacheTrabajos(): CacheTrabajos | null {
+  try {
+    const crudo = localStorage.getItem(CLAVE_CACHE_TRABAJOS);
+    if (!crudo) return null;
+    const datos = JSON.parse(crudo);
+    if (!datos || !Array.isArray(datos.datos) || typeof datos.guardadoEn !== "string") return null;
+    return datos;
+  } catch {
+    return null;
+  }
+}
+
+function guardarCacheTrabajos(datos: TrabajoConActividades[]): void {
+  try {
+    const cache: CacheTrabajos = { datos, guardadoEn: new Date().toISOString() };
+    localStorage.setItem(CLAVE_CACHE_TRABAJOS, JSON.stringify(cache));
+  } catch {
+    // Modo privado, cuota llena, etc.: sin cache, pero no bloquea la app.
+  }
+}
+
 type TrabajoCardProps = {
   trabajo: TrabajoConActividades;
 };
@@ -90,6 +118,7 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
   const [hayBorradorRestaurado] = useState(() => leerBorrador(trabajo.id) !== null);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<MensajeState>(null);
+  const [reintentandoAlVolverSenal, setReintentandoAlVolverSenal] = useState(false);
 
   useEffect(() => {
     guardarBorrador(trabajo.id, { avances, comentario });
@@ -235,6 +264,7 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
         setAvances({});
         setComentario("");
         borrarBorrador(trabajo.id);
+        setReintentandoAlVolverSenal(false);
         setMensaje({ type: "success", text: "Avance guardado con exito." });
       } else {
         const data = await res.json().catch(() => null);
@@ -246,18 +276,37 @@ function TrabajoCard({ trabajo }: TrabajoCardProps) {
     } catch (error) {
       // El timeout de fetchAutenticado lanza un Error con mensaje propio
       // (distinto de un TypeError de red, que no es amigable para
-      // mostrar tal cual); cualquier otra falla usa el mensaje generico.
+      // mostrar tal cual); cualquier otra falla es de conexion, asi que
+      // se reintenta sola en cuanto el navegador detecte que volvio la
+      // señal (ver el useEffect de "online" mas abajo), sin que el lider
+      // tenga que acordarse de volver a tocar "Guardar".
+      setReintentandoAlVolverSenal(true);
       setMensaje({
         type: "error",
         text:
-          error instanceof Error && !(error instanceof TypeError)
+          (error instanceof Error && !(error instanceof TypeError)
             ? error.message
-            : "No se pudo conectar con el servidor. Intenta de nuevo.",
+            : "No se pudo conectar con el servidor.") +
+          " Se reintentara solo cuando vuelva la señal.",
       });
     } finally {
       setGuardando(false);
     }
   };
+
+  // Si el ultimo intento de guardar fallo por conexion, no hay que
+  // esperar a que el lider se acuerde de volver a tocar "Guardar": en
+  // cuanto el navegador detecte que volvio la señal, se reintenta solo.
+  useEffect(() => {
+    if (!reintentandoAlVolverSenal) return;
+    const alVolverSenal = () => {
+      setReintentandoAlVolverSenal(false);
+      handleGuardar();
+    };
+    window.addEventListener("online", alVolverSenal);
+    return () => window.removeEventListener("online", alVolverSenal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reintentandoAlVolverSenal]);
 
   return (
     <div className="border border-slate-200 rounded-lg p-4">
@@ -551,17 +600,26 @@ export default function MisTrabajosPanel() {
   const [trabajos, setTrabajos] = useState<TrabajoConActividades[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mostrandoCacheDe, setMostrandoCacheDe] = useState<string | null>(null);
 
   const cargarMisTrabajos = async () => {
     setCargando(true);
     setError(null);
+    setMostrandoCacheDe(null);
     try {
       const res = await fetchAutenticado(`${API_URL}/api/mis-trabajos`);
       if (!res.ok) throw new Error();
       const data: TrabajoConActividades[] = await res.json();
       setTrabajos(data);
+      guardarCacheTrabajos(data);
     } catch {
-      setError("No se pudo cargar tus trabajos asignados.");
+      const cache = leerCacheTrabajos();
+      if (cache) {
+        setTrabajos(cache.datos);
+        setMostrandoCacheDe(cache.guardadoEn);
+      } else {
+        setError("No se pudo cargar tus trabajos asignados.");
+      }
     } finally {
       setCargando(false);
     }
@@ -586,6 +644,13 @@ export default function MisTrabajosPanel() {
       </div>
 
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+
+      {mostrandoCacheDe && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+          No se pudo actualizar la lista — mostrando la ultima guardada en este dispositivo
+          ({formatearFecha(mostrandoCacheDe)}). Puede que no este al dia.
+        </p>
+      )}
 
       {!error && cargando && trabajos.length === 0 && (
         <p className="text-sm text-slate-500">Cargando...</p>
