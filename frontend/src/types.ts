@@ -62,6 +62,7 @@ export type ActividadAdmin = Actividad & {
 
 export type TrabajoConActividades = Trabajo & {
   actividades: Actividad[];
+  dias_en_sitio: number | null;
 };
 
 export type AvanceDetalle = {

@@ -382,6 +382,7 @@ class ActividadOut(BaseModel):
 
 class TrabajoConActividadesOut(TrabajoOut):
     actividades: list[ActividadOut] = []
+    dias_en_sitio: int | None = None
 
 
 class ActividadCreate(BaseModel):
@@ -1566,6 +1567,48 @@ def listar_mis_trabajos(
     trabajos = trabajos_resp.data or []
     for trabajo in trabajos:
         trabajo["actividades"] = trabajo.get("actividades") or []
+
+    # "Dias en el sitio" para el lider mismo: desde cuando empezo a
+    # figurar en este trabajo (programado o, a falta de eso, reportando
+    # avance), mismo criterio que usa el Dashboard/Daily del admin. Se
+    # muestra en su bandeja como recordatorio de cuanto tiempo lleva ahi.
+    try:
+        prog_historial_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id, fecha")
+            .eq("lider_id", usuario.id)
+            .in_("trabajo_id", trabajo_ids_hoy)
+            .lte("fecha", hoy.isoformat())
+            .execute()
+        )
+        avances_historial_resp = (
+            supabase.table("avances_diarios")
+            .select("trabajo_id, created_at")
+            .eq("lider_id", usuario.id)
+            .in_("trabajo_id", trabajo_ids_hoy)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al calcular los dias en sitio.",
+        ) from exc
+
+    primera_fecha_por_trabajo: dict[str, date] = {}
+    for fila in prog_historial_resp.data or []:
+        fecha_fila = date.fromisoformat(fila["fecha"])
+        actual = primera_fecha_por_trabajo.get(fila["trabajo_id"])
+        if actual is None or fecha_fila < actual:
+            primera_fecha_por_trabajo[fila["trabajo_id"]] = fecha_fila
+    for fila in avances_historial_resp.data or []:
+        fecha_avance = _parsear_timestamptz(fila["created_at"]).astimezone(ZONA_COLOMBIA).date()
+        actual = primera_fecha_por_trabajo.get(fila["trabajo_id"])
+        if actual is None or fecha_avance < actual:
+            primera_fecha_por_trabajo[fila["trabajo_id"]] = fecha_avance
+
+    for trabajo in trabajos:
+        primera_fecha = primera_fecha_por_trabajo.get(trabajo["id"])
+        trabajo["dias_en_sitio"] = (hoy - primera_fecha).days + 1 if primera_fecha else None
 
     return trabajos
 

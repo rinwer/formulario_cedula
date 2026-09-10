@@ -26,6 +26,15 @@ function qtyNumerico(qty: string | null): number | null {
   return Number.isFinite(valor) ? valor : null;
 }
 
+// Recordatorio visual de cuanto tiempo lleva el lider en el site, para
+// que la urgencia de avanzar se note de un vistazo sin tener que abrir
+// la tarjeta: 1-10 dias verde, 11-12 ambar, 13+ rojo.
+function colorDiasEnSitio(dias: number): string {
+  if (dias >= 13) return "bg-red-100 text-red-700";
+  if (dias >= 11) return "bg-amber-100 text-amber-700";
+  return "bg-emerald-100 text-emerald-700";
+}
+
 // Borrador local del avance de hoy, por trabajo: en campo la señal falla
 // seguido, y perder los numeros que el lider ya tecleo (sin haber
 // alcanzado a guardar) es el peor escenario posible. Se guarda en
@@ -348,6 +357,16 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
           <span className="text-sm text-slate-600">Zona: {trabajo.zona}</span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {trabajo.dias_en_sitio !== null && (
+            <span
+              className={
+                "text-xs font-semibold px-2 py-0.5 rounded-full " +
+                colorDiasEnSitio(trabajo.dias_en_sitio)
+              }
+            >
+              {trabajo.dias_en_sitio} dia{trabajo.dias_en_sitio === 1 ? "" : "s"} en sitio
+            </span>
+          )}
           {porcentajeGeneral !== null && (
             <span
               className={
