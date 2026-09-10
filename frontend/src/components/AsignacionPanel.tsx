@@ -73,7 +73,7 @@ function InfoTooltip({ texto, variante = "info", label }: InfoTooltipProps) {
       {abierto && (
         <div
           className={
-            "absolute left-0 top-6 z-10 w-72 text-xs rounded-md border px-3 py-2 pr-6 shadow-md " +
+            "absolute left-0 top-6 z-10 w-72 max-w-[85vw] text-xs rounded-md border px-3 py-2 pr-6 shadow-md " +
             colores
           }
         >
@@ -656,7 +656,115 @@ export default function AsignacionPanel() {
         )}
 
         {trabajosOrdenados.length > 0 && (
-          <div className="overflow-x-auto">
+          <>
+            {/* Pantalla chica: tarjetas apiladas, sin scroll horizontal. */}
+            <div className="flex flex-col gap-2 md:hidden">
+              {trabajosOrdenados.map((trabajo) => {
+                const editando = idEditando === trabajo.id;
+                if (editando) {
+                  return (
+                    <div
+                      key={trabajo.id}
+                      className="rounded-lg border border-cobre-200 bg-cobre-50/30 p-3 space-y-2"
+                    >
+                      <input
+                        type="text"
+                        value={idSmpEditado}
+                        onChange={(e) => setIdSmpEditado(e.target.value)}
+                        placeholder="ID / SMP"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                        autoFocus
+                      />
+                      <input
+                        type="text"
+                        value={siteEditado}
+                        onChange={(e) => setSiteEditado(e.target.value)}
+                        placeholder="Site"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                      />
+                      <input
+                        type="text"
+                        value={zonaEditada}
+                        onChange={(e) => setZonaEditada(e.target.value)}
+                        placeholder="Zona"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                      />
+                      <select
+                        value={estadoEditado}
+                        onChange={(e) => setEstadoEditado(e.target.value as EstadoTrabajo)}
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                      >
+                        <option value="asignado">Asignado</option>
+                        <option value="finalizado">Finalizado</option>
+                        <option value="standby">Standby</option>
+                      </select>
+                      {errorEdicion && <p className="text-xs text-red-600">{errorEdicion}</p>}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => guardarEdicion(trabajo.id)}
+                          disabled={
+                            guardandoEdicion ||
+                            !idSmpEditado.trim() ||
+                            !siteEditado.trim() ||
+                            !zonaEditada.trim()
+                          }
+                          className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 px-3 py-1.5 rounded-md"
+                        >
+                          {guardandoEdicion ? "Guardando..." : "Guardar"}
+                        </button>
+                        <button
+                          onClick={cancelarEdicion}
+                          disabled={guardandoEdicion}
+                          className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1.5 rounded-md"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={trabajo.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-800 truncate">{trabajo.site}</p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {trabajo.id_smp} · {trabajo.zona}
+                        </p>
+                      </div>
+                      <span
+                        className={
+                          "shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                          ESTADO_BADGE[trabajo.estado]
+                        }
+                      >
+                        {ESTADO_LABEL[trabajo.estado]}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1.5">
+                      Asignado por: {trabajo.asignado_por_nombre ?? trabajo.asignado_por_email ?? "—"}
+                    </p>
+                    <div className="flex gap-3 mt-2">
+                      <button
+                        onClick={() => iniciarEdicion(trabajo)}
+                        className="text-sm text-cobre-500 hover:text-cobre-300 font-medium"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => abrirActividades(trabajo)}
+                        className="text-sm text-slate-600 hover:text-slate-800 font-medium"
+                      >
+                        Actividades
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop/tablet: tabla completa. */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
@@ -807,7 +915,8 @@ export default function AsignacionPanel() {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -838,7 +947,129 @@ export default function AsignacionPanel() {
             {cargandoActividades ? (
               <p className="text-sm text-slate-500">Cargando...</p>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                {/* Pantalla chica: tarjetas apiladas, sin scroll horizontal. */}
+                <div className="flex flex-col gap-2 mb-4 md:hidden">
+                  {actividades.length === 0 && (
+                    <p className="text-sm text-slate-500">Este trabajo todavia no tiene actividades.</p>
+                  )}
+                  {actividades.map((act) => {
+                    const editando = actividadEditandoId === act.id;
+                    if (editando) {
+                      return (
+                        <div
+                          key={act.id}
+                          className="rounded-lg border border-cobre-200 bg-cobre-50/30 p-3 space-y-2"
+                        >
+                          <input
+                            type="text"
+                            value={actividadEditada.actividad}
+                            onChange={(e) =>
+                              setActividadEditada((prev) => ({ ...prev, actividad: e.target.value }))
+                            }
+                            placeholder="Actividad"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            autoFocus
+                          />
+                          <input
+                            type="text"
+                            value={actividadEditada.tipificacion}
+                            onChange={(e) =>
+                              setActividadEditada((prev) => ({ ...prev, tipificacion: e.target.value }))
+                            }
+                            placeholder="Tipificacion"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                          />
+                          <input
+                            type="text"
+                            value={actividadEditada.hw_actividad}
+                            onChange={(e) =>
+                              setActividadEditada((prev) => ({ ...prev, hw_actividad: e.target.value }))
+                            }
+                            placeholder="HW-Actividad"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={actividadEditada.qty}
+                              onChange={(e) =>
+                                setActividadEditada((prev) => ({ ...prev, qty: e.target.value }))
+                              }
+                              placeholder="Qty"
+                              className="w-1/2 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            />
+                            <input
+                              type="text"
+                              value={actividadEditada.avance}
+                              onChange={(e) =>
+                                setActividadEditada((prev) => ({ ...prev, avance: e.target.value }))
+                              }
+                              placeholder="Avance"
+                              className="w-1/2 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              onClick={() => guardarEdicionActividad(act.id)}
+                              disabled={guardandoActividad || !actividadEditada.actividad.trim()}
+                              className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 px-3 py-1.5 rounded-md"
+                            >
+                              {guardandoActividad ? "Guardando..." : "Guardar"}
+                            </button>
+                            <button
+                              onClick={cancelarEdicionActividad}
+                              disabled={guardandoActividad}
+                              className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1.5 rounded-md"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        key={act.id}
+                        className={
+                          "rounded-lg border p-3 " +
+                          (act.tiene_avance ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200")
+                        }
+                      >
+                        <p className="font-medium text-slate-800">{act.actividad ?? "—"}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {[act.tipificacion, act.hw_actividad].filter(Boolean).join(" · ") || "—"}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Qty: {act.qty ?? "—"} · Avance: {act.avance ?? "—"}
+                        </p>
+                        <div className="flex gap-3 mt-2">
+                          <button
+                            onClick={() => iniciarEdicionActividad(act)}
+                            className="text-sm text-cobre-500 hover:text-cobre-300 font-medium"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => eliminarActividad(act.id)}
+                            disabled={act.tiene_avance || eliminandoActividadId === act.id}
+                            title={
+                              act.tiene_avance
+                                ? "Ya tiene avance reportado, no se puede eliminar"
+                                : undefined
+                            }
+                            className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium"
+                          >
+                            {eliminandoActividadId === act.id ? "..." : "Eliminar"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop/tablet: tabla completa. */}
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-sm mb-4">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500">
@@ -985,7 +1216,8 @@ export default function AsignacionPanel() {
                     })}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </>
             )}
 
             <div className="pt-4 border-t border-slate-200">

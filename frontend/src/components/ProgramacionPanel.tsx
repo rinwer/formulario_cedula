@@ -84,6 +84,61 @@ function FilaProgramacion({ fila, ocupado, bloqueado, onQuitar }: FilaProgramaci
   );
 }
 
+// Version en tarjeta de FilaProgramacion para pantalla chica: la tabla de
+// 8 columnas obliga a scroll horizontal en un celular, incomodo sobre
+// todo para tocar el boton "Quitar".
+function TarjetaProgramacion({ fila, ocupado, bloqueado, onQuitar }: FilaProgramacionProps) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-medium text-slate-800">{fila.site}</p>
+          <p className="text-xs text-slate-500">{fila.zona}</p>
+        </div>
+        <span
+          className={
+            "shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+            (fila.actualizado ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")
+          }
+        >
+          {fila.actualizado ? "Actualizado" : "Sin actualizar"}
+        </span>
+      </div>
+
+      {fila.porcentaje_avance !== null && (
+        <p
+          className={
+            "mt-1.5 text-xs font-semibold " +
+            (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
+          }
+        >
+          {fila.porcentaje_avance}% avance
+        </p>
+      )}
+      {fila.detalle.length > 0 && (
+        <p className="mt-1 text-xs text-slate-500">
+          {fila.detalle.map((d) => `${d.hw_actividad ?? d.actividad ?? "—"}: ${d.cantidad}`).join(" · ")}
+        </p>
+      )}
+      {fila.comentarios.length > 0 && (
+        <p className="mt-1 text-sm text-slate-700">{fila.comentarios.join(" | ")}</p>
+      )}
+      <p className="mt-1.5 text-xs text-slate-400">
+        Asignado por: {fila.asignado_por_nombre ?? fila.asignado_por_email ?? "—"}
+      </p>
+
+      <button
+        type="button"
+        onClick={() => onQuitar(fila.trabajo_id)}
+        disabled={ocupado || bloqueado}
+        className="mt-2 text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium"
+      >
+        {ocupado ? "..." : "Quitar"}
+      </button>
+    </div>
+  );
+}
+
 type AgregarSiteControlProps = {
   liderId: string;
   opciones: AvanceDiarioAdmin[];
@@ -107,7 +162,7 @@ function AgregarSiteControl({ liderId, opciones, deshabilitado, onAgregar }: Agr
   const listaId = `sites-disponibles-${liderId}`;
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-1 sm:flex-none items-center gap-2 min-w-0">
       <input
         type="text"
         list={listaId}
@@ -121,7 +176,7 @@ function AgregarSiteControl({ liderId, opciones, deshabilitado, onAgregar }: Agr
         }}
         placeholder="Buscar site por nombre..."
         disabled={deshabilitado}
-        className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500 disabled:bg-slate-100"
+        className="w-full sm:w-56 min-w-0 rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500 disabled:bg-slate-100"
       />
       <datalist id={listaId}>
         {opciones.map((o) => (
@@ -443,7 +498,7 @@ export default function ProgramacionPanel() {
           </p>
         </div>
 
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-1 min-w-0">
           {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
           {errorAsignacion && <p className="text-sm text-red-600 mb-4">{errorAsignacion}</p>}
           {mensajeCopiar && <p className="text-sm text-cobre-700 mb-4">{mensajeCopiar}</p>}
@@ -479,7 +534,7 @@ export default function ProgramacionPanel() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                     <h3 className="font-semibold text-slate-800">{lider.nombre_completo}</h3>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                       {!marcadoNoDisponible && (
                         <AgregarSiteControl
                           liderId={lider.id}
@@ -583,6 +638,70 @@ export default function ProgramacionPanel() {
                   ) : sitesDelLider.length === 0 ? (
                     <p className="text-sm text-slate-400">Sin sites asignados para este dia.</p>
                   ) : (
+                    <>
+                      <div className="flex flex-col gap-2 md:hidden">
+                        {sitesDelLider.map((fila) => (
+                          <TarjetaProgramacion
+                            key={fila.trabajo_id}
+                            fila={fila}
+                            ocupado={trabajoOcupadoId === fila.trabajo_id}
+                            bloqueado={esFechaPasada}
+                            onQuitar={quitarAsignacion}
+                          />
+                        ))}
+                      </div>
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-slate-500">
+                              <th className="py-2 pr-4 font-medium">Site</th>
+                              <th className="py-2 pr-4 font-medium">Zona</th>
+                              <th className="py-2 pr-4 font-medium">Actualizo</th>
+                              <th className="py-2 pr-4 font-medium">% Avance</th>
+                              <th className="py-2 pr-4 font-medium">Avance del dia</th>
+                              <th className="py-2 pr-4 font-medium">Comentario</th>
+                              <th className="py-2 pr-4 font-medium">Asignado por</th>
+                              <th className="py-2 pr-4 font-medium text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sitesDelLider.map((fila) => (
+                              <FilaProgramacion
+                                key={fila.trabajo_id}
+                                fila={fila}
+                                ocupado={trabajoOcupadoId === fila.trabajo_id}
+                                bloqueado={esFechaPasada}
+                                onQuitar={quitarAsignacion}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+
+            {liderIdsNoHabilitadosConSites.map((liderId) => {
+              const sitesDelLider = filasPorLider[liderId];
+              const nombre =
+                sitesDelLider[0]?.lider_nombre ?? sitesDelLider[0]?.lider_email ?? "Lider";
+              return (
+                <div key={liderId} className="border border-amber-200 bg-amber-50/40 rounded-lg p-4">
+                  <h3 className="font-semibold text-slate-800 mb-3">{nombre} (deshabilitado)</h3>
+                  <div className="flex flex-col gap-2 md:hidden">
+                    {sitesDelLider.map((fila) => (
+                      <TarjetaProgramacion
+                        key={fila.trabajo_id}
+                        fila={fila}
+                        ocupado={trabajoOcupadoId === fila.trabajo_id}
+                        bloqueado={esFechaPasada}
+                        onQuitar={quitarAsignacion}
+                      />
+                    ))}
+                  </div>
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-slate-200 text-slate-500">
@@ -608,43 +727,7 @@ export default function ProgramacionPanel() {
                         ))}
                       </tbody>
                     </table>
-                  )}
-                </div>
-              );
-            })}
-
-            {liderIdsNoHabilitadosConSites.map((liderId) => {
-              const sitesDelLider = filasPorLider[liderId];
-              const nombre =
-                sitesDelLider[0]?.lider_nombre ?? sitesDelLider[0]?.lider_email ?? "Lider";
-              return (
-                <div key={liderId} className="border border-amber-200 bg-amber-50/40 rounded-lg p-4">
-                  <h3 className="font-semibold text-slate-800 mb-3">{nombre} (deshabilitado)</h3>
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-500">
-                        <th className="py-2 pr-4 font-medium">Site</th>
-                        <th className="py-2 pr-4 font-medium">Zona</th>
-                        <th className="py-2 pr-4 font-medium">Actualizo</th>
-                        <th className="py-2 pr-4 font-medium">% Avance</th>
-                        <th className="py-2 pr-4 font-medium">Avance del dia</th>
-                        <th className="py-2 pr-4 font-medium">Comentario</th>
-                          <th className="py-2 pr-4 font-medium">Asignado por</th>
-                        <th className="py-2 pr-4 font-medium text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sitesDelLider.map((fila) => (
-                        <FilaProgramacion
-                          key={fila.trabajo_id}
-                          fila={fila}
-                          ocupado={trabajoOcupadoId === fila.trabajo_id}
-                          bloqueado={esFechaPasada}
-                          onQuitar={quitarAsignacion}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
+                  </div>
                 </div>
               );
             })}

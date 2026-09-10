@@ -290,36 +290,29 @@ export default function DailyPanel() {
           )}
 
           {(filas.length > 0 || noDisponibles.length > 0) && (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Site</th>
-                  <th className="py-2 pr-4 font-medium">Lider</th>
-                  <th className="py-2 pr-4 font-medium">Actualizo</th>
-                  <th className="py-2 pr-4 font-medium">% Avance</th>
-                  <th className="py-2 pr-4 font-medium">Tipo de trabajo</th>
-                  <th className="py-2 pr-4 font-medium">Ofensor</th>
-                  <th className="py-2 pr-4 font-medium">Avance del dia</th>
-                  <th className="py-2 pr-4 font-medium">Comentario</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Pantalla chica: tarjetas apiladas, sin scroll horizontal. */}
+              <div className="flex flex-col gap-2 md:hidden">
                 {filasOrdenadas.map((fila) => (
-                  <tr
+                  <div
                     key={fila.trabajo_id}
                     className={
-                      "border-b border-slate-100 last:border-0 align-top " +
-                      (!fila.actualizado ? "bg-amber-50/60" : "")
+                      "rounded-lg border p-3 " +
+                      (!fila.actualizado
+                        ? "border-amber-200 bg-amber-50/60"
+                        : "border-slate-200")
                     }
                   >
-                    <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
-                    <td className="py-2 pr-4 text-slate-700">
-                      {fila.lider_nombre ?? fila.lider_email ?? "—"}
-                    </td>
-                    <td className="py-2 pr-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-slate-800">{fila.site}</p>
+                        <p className="text-xs text-slate-500">
+                          {fila.lider_nombre ?? fila.lider_email ?? "—"}
+                        </p>
+                      </div>
                       <span
                         className={
-                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                          "shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
                           (fila.actualizado
                             ? "bg-emerald-100 text-emerald-700"
                             : "bg-amber-100 text-amber-700")
@@ -327,59 +320,153 @@ export default function DailyPanel() {
                       >
                         {fila.actualizado ? "Actualizado" : "Sin actualizar"}
                       </span>
-                    </td>
-                    <td className="py-2 pr-4">
-                      {fila.porcentaje_avance === null ? (
-                        <span className="text-slate-400">—</span>
-                      ) : (
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs">
+                      {fila.porcentaje_avance !== null && (
                         <span
                           className={
-                            "text-xs font-semibold " +
+                            "font-semibold " +
                             (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
                           }
                         >
-                          {fila.porcentaje_avance}%
+                          {fila.porcentaje_avance}% avance
                         </span>
                       )}
-                    </td>
-                    <td className="py-2 pr-4 text-slate-700">
-                      {fila.tipos_trabajo.length === 0 ? "—" : fila.tipos_trabajo.join(" | ")}
-                    </td>
-                    <td className="py-2 pr-4 text-amber-700">
-                      {fila.ofensores.length === 0 ? "—" : fila.ofensores.join(" | ")}
-                    </td>
-                    <td className="py-2 pr-4 text-xs text-slate-600">
-                      {fila.detalle.length === 0
-                        ? "—"
-                        : fila.detalle
-                            .map((d) => `${d.hw_actividad ?? d.actividad ?? "—"}: ${d.cantidad}`)
-                            .join(" · ")}
-                    </td>
-                    <td className="py-2 pr-4 text-slate-700">
-                      {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
-                    </td>
-                  </tr>
+                      {fila.tipos_trabajo.length > 0 && (
+                        <span className="text-slate-600">{fila.tipos_trabajo.join(" | ")}</span>
+                      )}
+                      {fila.ofensores.length > 0 && (
+                        <span className="text-amber-700 font-medium">
+                          Ofensor: {fila.ofensores.join(" | ")}
+                        </span>
+                      )}
+                    </div>
+
+                    {fila.detalle.length > 0 && (
+                      <p className="mt-1.5 text-xs text-slate-500">
+                        {fila.detalle
+                          .map((d) => `${d.hw_actividad ?? d.actividad ?? "—"}: ${d.cantidad}`)
+                          .join(" · ")}
+                      </p>
+                    )}
+                    {fila.comentarios.length > 0 && (
+                      <p className="mt-1.5 text-sm text-slate-700">
+                        {fila.comentarios.join(" | ")}
+                      </p>
+                    )}
+                  </div>
                 ))}
                 {noDisponibles.map((d) => (
-                  <tr key={`no-disponible-${d.lider_id}`} className="border-b border-slate-100 last:border-0 align-top bg-slate-50">
-                    <td className="py-2 pr-4 text-slate-400">—</td>
-                    <td className="py-2 pr-4 text-slate-700">
-                      {nombrePorLiderId[d.lider_id] ?? d.lider_id}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                  <div
+                    key={`no-disponible-${d.lider_id}`}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-slate-800">
+                        {nombrePorLiderId[d.lider_id] ?? d.lider_id}
+                      </p>
+                      <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
                         No disponible
                       </span>
-                    </td>
-                    <td className="py-2 pr-4 text-slate-400">—</td>
-                    <td className="py-2 pr-4 text-slate-400">—</td>
-                    <td className="py-2 pr-4 text-slate-400">—</td>
-                    <td className="py-2 pr-4 text-slate-400">—</td>
-                    <td className="py-2 pr-4 text-slate-700">{d.motivo ?? "—"}</td>
-                  </tr>
+                    </div>
+                    {d.motivo && <p className="mt-1.5 text-sm text-slate-700">{d.motivo}</p>}
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Desktop/tablet: tabla completa. */}
+              <table className="hidden md:table w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500">
+                    <th className="py-2 pr-4 font-medium">Site</th>
+                    <th className="py-2 pr-4 font-medium">Lider</th>
+                    <th className="py-2 pr-4 font-medium">Actualizo</th>
+                    <th className="py-2 pr-4 font-medium">% Avance</th>
+                    <th className="py-2 pr-4 font-medium">Tipo de trabajo</th>
+                    <th className="py-2 pr-4 font-medium">Ofensor</th>
+                    <th className="py-2 pr-4 font-medium">Avance del dia</th>
+                    <th className="py-2 pr-4 font-medium">Comentario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filasOrdenadas.map((fila) => (
+                    <tr
+                      key={fila.trabajo_id}
+                      className={
+                        "border-b border-slate-100 last:border-0 align-top " +
+                        (!fila.actualizado ? "bg-amber-50/60" : "")
+                      }
+                    >
+                      <td className="py-2 pr-4 text-slate-700">{fila.site}</td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {fila.lider_nombre ?? fila.lider_email ?? "—"}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <span
+                          className={
+                            "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                            (fila.actualizado
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-amber-100 text-amber-700")
+                          }
+                        >
+                          {fila.actualizado ? "Actualizado" : "Sin actualizar"}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4">
+                        {fila.porcentaje_avance === null ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <span
+                            className={
+                              "text-xs font-semibold " +
+                              (fila.porcentaje_avance >= 100 ? "text-emerald-600" : "text-slate-600")
+                            }
+                          >
+                            {fila.porcentaje_avance}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {fila.tipos_trabajo.length === 0 ? "—" : fila.tipos_trabajo.join(" | ")}
+                      </td>
+                      <td className="py-2 pr-4 text-amber-700">
+                        {fila.ofensores.length === 0 ? "—" : fila.ofensores.join(" | ")}
+                      </td>
+                      <td className="py-2 pr-4 text-xs text-slate-600">
+                        {fila.detalle.length === 0
+                          ? "—"
+                          : fila.detalle
+                              .map((d) => `${d.hw_actividad ?? d.actividad ?? "—"}: ${d.cantidad}`)
+                              .join(" · ")}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
+                      </td>
+                    </tr>
+                  ))}
+                  {noDisponibles.map((d) => (
+                    <tr key={`no-disponible-${d.lider_id}`} className="border-b border-slate-100 last:border-0 align-top bg-slate-50">
+                      <td className="py-2 pr-4 text-slate-400">—</td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {nombrePorLiderId[d.lider_id] ?? d.lider_id}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                          No disponible
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4 text-slate-400">—</td>
+                      <td className="py-2 pr-4 text-slate-400">—</td>
+                      <td className="py-2 pr-4 text-slate-400">—</td>
+                      <td className="py-2 pr-4 text-slate-400">—</td>
+                      <td className="py-2 pr-4 text-slate-700">{d.motivo ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
       </div>

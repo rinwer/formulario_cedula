@@ -128,14 +128,14 @@ export default function DashboardPanel() {
                         {(() => {
                           const maxDias = Math.max(...historial.map((h) => h.dias));
                           return historial.map((h, i) => (
-                            <div key={i} className="flex items-center gap-3">
+                            <div key={i} className="flex items-center gap-2 sm:gap-3">
                               <span
-                                className="w-36 shrink-0 text-xs text-slate-700 truncate"
+                                className="w-20 sm:w-36 shrink-0 text-xs text-slate-700 truncate"
                                 title={`${h.site} (${h.zona})`}
                               >
                                 {h.site}
                               </span>
-                              <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="flex-1 min-w-0 h-3 bg-slate-100 rounded-full overflow-hidden">
                                 <div
                                   className={
                                     "h-full rounded-full " +
@@ -144,11 +144,11 @@ export default function DashboardPanel() {
                                   style={{ width: `${(h.dias / maxDias) * 100}%` }}
                                 />
                               </div>
-                              <span className="w-16 shrink-0 text-xs text-slate-600 text-right">
+                              <span className="shrink-0 text-xs text-slate-600 text-right whitespace-nowrap">
                                 {h.dias} dia{h.dias === 1 ? "" : "s"}
                               </span>
                               {h.es_actual && (
-                                <span className="w-16 shrink-0 text-xs text-cobre-600 font-medium">
+                                <span className="hidden sm:inline shrink-0 text-xs text-cobre-600 font-medium whitespace-nowrap">
                                   en curso
                                 </span>
                               )}

@@ -404,7 +404,142 @@ export default function PerfilesPanel() {
         )}
 
         {usuariosOrdenados.length > 0 && (
-          <div className="overflow-x-auto">
+          <>
+            {/* Pantalla chica: tarjetas apiladas, sin scroll horizontal. */}
+            <div className="flex flex-col gap-2 md:hidden">
+              {usuariosOrdenados.map((usuario) => {
+                const editando = idEditando === usuario.id;
+                if (editando) {
+                  return (
+                    <div
+                      key={usuario.id}
+                      className="rounded-lg border border-cobre-200 bg-cobre-50/30 p-3 space-y-2"
+                    >
+                      <input
+                        type="text"
+                        value={nombreEditado}
+                        onChange={(e) => setNombreEditado(e.target.value)}
+                        placeholder="Nombre completo"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                        autoFocus
+                      />
+                      <input
+                        type="email"
+                        value={emailEditado}
+                        onChange={(e) => setEmailEditado(e.target.value)}
+                        placeholder="Correo"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                      />
+                      <input
+                        type="text"
+                        value={passwordEditado}
+                        onChange={(e) => setPasswordEditado(e.target.value)}
+                        placeholder="Nueva contrasena (opcional)"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                      />
+                      <select
+                        value={rolEditado}
+                        onChange={(e) => setRolEditado(e.target.value as Rol)}
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                      >
+                        <option value="lider_cuadrilla">Lider de cuadrilla</option>
+                        <option value="coordinador">Coordinador</option>
+                        <option value="visualizador">Visualizador</option>
+                        <option value="administrador">Administrador</option>
+                      </select>
+                      {rolEditado === "lider_cuadrilla" && (
+                        <select
+                          value={tipoTrabajoIdEditado}
+                          onChange={(e) => setTipoTrabajoIdEditado(e.target.value)}
+                          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                        >
+                          <option value="">Tipo de trabajo: sin definir</option>
+                          {catalogoTipoTrabajo
+                            .filter((opcion) => opcion.activo)
+                            .map((opcion) => (
+                              <option key={opcion.id} value={opcion.id}>
+                                {opcion.valor}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={activoEditado}
+                          onChange={(e) => setActivoEditado(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-cobre-600 focus:ring-cobre-500"
+                        />
+                        Habilitado
+                      </label>
+                      {errorEdicion && <p className="text-xs text-red-600">{errorEdicion}</p>}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => guardarEdicion(usuario.id)}
+                          disabled={
+                            guardandoEdicion || !nombreEditado.trim() || !emailEditado.trim()
+                          }
+                          className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 px-3 py-1.5 rounded-md"
+                        >
+                          {guardandoEdicion ? "Guardando..." : "Guardar"}
+                        </button>
+                        <button
+                          onClick={cancelarEdicion}
+                          disabled={guardandoEdicion}
+                          className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1.5 rounded-md"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={usuario.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-800 truncate">
+                          {usuario.nombre_completo}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">{usuario.email}</p>
+                      </div>
+                      <button
+                        onClick={() => iniciarEdicion(usuario)}
+                        className="shrink-0 text-sm text-cobre-600 hover:text-cobre-800 font-medium"
+                      >
+                        Editar
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span
+                        className={
+                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                          (ROLE_BADGE[usuario.role] ?? "bg-slate-200 text-slate-600")
+                        }
+                      >
+                        {ROLE_LABEL[usuario.role] ?? usuario.role}
+                      </span>
+                      <span
+                        className={
+                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium " +
+                          (usuario.activo
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-600")
+                        }
+                      >
+                        {usuario.activo ? "Habilitado" : "Deshabilitado"}
+                      </span>
+                    </div>
+                    {usuario.role === "lider_cuadrilla" && usuario.tipo_trabajo_valor && (
+                      <p className="text-xs text-slate-500 mt-1.5">{usuario.tipo_trabajo_valor}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop/tablet: tabla completa. */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
@@ -576,7 +711,8 @@ export default function PerfilesPanel() {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 

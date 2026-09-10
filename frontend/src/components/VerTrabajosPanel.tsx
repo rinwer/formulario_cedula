@@ -214,61 +214,109 @@ export default function VerTrabajosPanel() {
             ) : actividades.length === 0 ? (
               <p className="text-sm text-slate-500">Este trabajo todavia no tiene actividades.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-500">
-                      <th className="py-2 pr-4 font-medium">Actividad</th>
-                      <th className="py-2 pr-4 font-medium">Tipificacion</th>
-                      <th className="py-2 pr-4 font-medium">HW-Actividad</th>
-                      <th className="py-2 pr-4 font-medium">Qty</th>
-                      <th className="py-2 pr-4 font-medium">Avance</th>
-                      <th className="py-2 pr-4 font-medium">Reportado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {actividades.map((a) => {
-                      const qtyMax = qtyNumerico(a.qty);
-                      const acumulado = acumuladoPorActividad[a.id] ?? 0;
-                      const completa = qtyMax !== null && acumulado >= qtyMax;
-                      return (
-                        <tr
-                          key={a.id}
-                          className={
-                            "border-b border-slate-100 last:border-0 " +
-                            (completa
-                              ? "bg-emerald-50"
-                              : acumulado === 0
-                              ? "bg-amber-50"
-                              : "")
-                          }
-                        >
-                          <td className="py-2 pr-4 text-slate-700">{a.actividad ?? "—"}</td>
-                          <td className="py-2 pr-4 text-slate-700">{a.tipificacion ?? "—"}</td>
-                          <td className="py-2 pr-4 text-slate-700">{a.hw_actividad ?? "—"}</td>
-                          <td className="py-2 pr-4 text-slate-700">{a.qty ?? "—"}</td>
-                          <td className="py-2 pr-4 text-slate-700">{a.avance ?? "—"}</td>
-                          <td className="py-2 pr-4">
-                            {acumulado === 0 ? (
-                              <span className="text-sm font-semibold text-amber-700">Sin avance</span>
-                            ) : (
-                              <span
-                                className={
-                                  "text-xs font-semibold " +
-                                  (completa ? "text-emerald-700" : "text-slate-700")
-                                }
-                              >
-                                {qtyMax !== null ? `${acumulado} / ${qtyMax}` : acumulado}
-                                {completa && " ✓"}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                {/* Pantalla chica: tarjetas apiladas, sin scroll horizontal. */}
+                <div className="flex flex-col gap-2 md:hidden">
+                  {actividades.map((a) => {
+                    const qtyMax = qtyNumerico(a.qty);
+                    const acumulado = acumuladoPorActividad[a.id] ?? 0;
+                    const completa = qtyMax !== null && acumulado >= qtyMax;
+                    return (
+                      <div
+                        key={a.id}
+                        className={
+                          "rounded-lg border p-3 " +
+                          (completa
+                            ? "border-emerald-200 bg-emerald-50"
+                            : acumulado === 0
+                            ? "border-amber-200 bg-amber-50"
+                            : "border-slate-200")
+                        }
+                      >
+                        <p className="font-medium text-slate-800">{a.actividad ?? "—"}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {[a.tipificacion, a.hw_actividad].filter(Boolean).join(" · ") || "—"}
+                        </p>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <span className="text-xs text-slate-500">
+                            Qty: {a.qty ?? "—"} · Avance: {a.avance ?? "—"}
+                          </span>
+                          {acumulado === 0 ? (
+                            <span className="text-xs font-semibold text-amber-700">Sin avance</span>
+                          ) : (
+                            <span
+                              className={
+                                "text-xs font-semibold " +
+                                (completa ? "text-emerald-700" : "text-slate-700")
+                              }
+                            >
+                              {qtyMax !== null ? `${acumulado} / ${qtyMax}` : acumulado}
+                              {completa && " ✓"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop/tablet: tabla completa. */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500">
+                        <th className="py-2 pr-4 font-medium">Actividad</th>
+                        <th className="py-2 pr-4 font-medium">Tipificacion</th>
+                        <th className="py-2 pr-4 font-medium">HW-Actividad</th>
+                        <th className="py-2 pr-4 font-medium">Qty</th>
+                        <th className="py-2 pr-4 font-medium">Avance</th>
+                        <th className="py-2 pr-4 font-medium">Reportado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {actividades.map((a) => {
+                        const qtyMax = qtyNumerico(a.qty);
+                        const acumulado = acumuladoPorActividad[a.id] ?? 0;
+                        const completa = qtyMax !== null && acumulado >= qtyMax;
+                        return (
+                          <tr
+                            key={a.id}
+                            className={
+                              "border-b border-slate-100 last:border-0 " +
+                              (completa
+                                ? "bg-emerald-50"
+                                : acumulado === 0
+                                ? "bg-amber-50"
+                                : "")
+                            }
+                          >
+                            <td className="py-2 pr-4 text-slate-700">{a.actividad ?? "—"}</td>
+                            <td className="py-2 pr-4 text-slate-700">{a.tipificacion ?? "—"}</td>
+                            <td className="py-2 pr-4 text-slate-700">{a.hw_actividad ?? "—"}</td>
+                            <td className="py-2 pr-4 text-slate-700">{a.qty ?? "—"}</td>
+                            <td className="py-2 pr-4 text-slate-700">{a.avance ?? "—"}</td>
+                            <td className="py-2 pr-4">
+                              {acumulado === 0 ? (
+                                <span className="text-sm font-semibold text-amber-700">Sin avance</span>
+                              ) : (
+                                <span
+                                  className={
+                                    "text-xs font-semibold " +
+                                    (completa ? "text-emerald-700" : "text-slate-700")
+                                  }
+                                >
+                                  {qtyMax !== null ? `${acumulado} / ${qtyMax}` : acumulado}
+                                  {completa && " ✓"}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
 

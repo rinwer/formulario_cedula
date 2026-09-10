@@ -164,43 +164,47 @@ export default function App() {
       <header className="bg-white border-b border-slate-200">
         <div
           className={
-            "mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3 " +
-            (anchoAmplio ? "max-w-7xl" : "max-w-5xl")
+            "mx-auto px-4 py-3 " + (anchoAmplio ? "max-w-7xl" : "max-w-5xl")
           }
         >
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-            <span className="font-semibold text-slate-800">Seguimiento</span>
-            {esStaff && (
-              <nav className="flex gap-4">
-                {tabsVisibles.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setTabActiva(tab.key)}
-                    className={
-                      "text-sm font-medium pb-1 border-b-2 transition-colors " +
-                      (tabEfectiva === tab.key
-                        ? "text-cobre-600 border-cobre-600"
-                        : "text-slate-500 border-transparent hover:text-slate-700")
-                    }
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
-            )}
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-semibold text-slate-800 shrink-0">Seguimiento</span>
+
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <span className="text-sm text-slate-500 max-w-[40vw] sm:max-w-none truncate">
+                {perfil.nombre_completo || perfil.email}
+              </span>
+              <button
+                onClick={cerrarSesion}
+                className="text-sm text-slate-600 hover:text-slate-900 font-medium whitespace-nowrap shrink-0"
+              >
+                Cerrar sesion
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-4">
-            <span className="text-sm text-slate-500 max-w-[45vw] sm:max-w-none truncate">
-              {perfil.nombre_completo || perfil.email}
-            </span>
-            <button
-              onClick={cerrarSesion}
-              className="text-sm text-slate-600 hover:text-slate-900 font-medium whitespace-nowrap"
-            >
-              Cerrar sesion
-            </button>
-          </div>
+          {esStaff && (
+            // En pantalla chica las 7 pestanas no caben en una sola linea sin
+            // wrap ni scroll (se ven amontonadas o se salen de la pantalla);
+            // aca se deja como una barra que se desliza horizontalmente, y en
+            // sm+ (donde si caben) vuelve a su fila normal sin scroll.
+            <nav className="flex gap-4 mt-3 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible">
+              {tabsVisibles.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setTabActiva(tab.key)}
+                  className={
+                    "shrink-0 whitespace-nowrap text-sm font-medium pb-1 border-b-2 transition-colors " +
+                    (tabEfectiva === tab.key
+                      ? "text-cobre-600 border-cobre-600"
+                      : "text-slate-500 border-transparent hover:text-slate-700")
+                  }
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
       </header>
 
