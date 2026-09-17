@@ -1271,7 +1271,8 @@ def importar_actividades(
             for e in existentes_resp.data or []
         }
 
-        filas_a_guardar: list[dict] = []
+        filas_a_actualizar: list[dict] = []
+        filas_a_insertar: list[dict] = []
         for trabajo_id, filas in filas_por_trabajo.items():
             for fila in filas:
                 clave = (
@@ -1280,15 +1281,23 @@ def importar_actividades(
                 )
                 id_existente = id_existente_por_clave.get(clave)
                 if id_existente:
-                    fila = {**fila, "id": id_existente}
-                filas_a_guardar.append(fila)
+                    filas_a_actualizar.append({**fila, "id": id_existente})
+                else:
+                    filas_a_insertar.append(fila)
 
         try:
-            # upsert (no delete+insert): las filas que traen "id" actualizan
-            # esa fila existente sin tocar avances_diarios_detalle; las que
-            # no traen "id" se insertan como actividades nuevas.
-            supabase.table("actividades").upsert(filas_a_guardar).execute()
-            actividades_cargadas = len(filas_a_guardar)
+            # Actualizar e insertar van en llamadas separadas (no un solo
+            # upsert mezclando filas con y sin "id"): Postgrest arma el
+            # INSERT con la union de columnas del lote completo, asi que si
+            # una fila trae "id" y otra no, a la que le falta ese campo se
+            # le manda NULL en vez de dejar que la tabla genere el uuid por
+            # defecto, y la carga entera fallaba por la restriccion not-null
+            # de esa columna.
+            if filas_a_actualizar:
+                supabase.table("actividades").upsert(filas_a_actualizar).execute()
+            if filas_a_insertar:
+                supabase.table("actividades").insert(filas_a_insertar).execute()
+            actividades_cargadas = len(filas_a_actualizar) + len(filas_a_insertar)
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
