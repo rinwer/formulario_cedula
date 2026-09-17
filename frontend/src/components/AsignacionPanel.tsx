@@ -190,6 +190,7 @@ export default function AsignacionPanel() {
   });
   const [guardandoActividad, setGuardandoActividad] = useState(false);
   const [alternandoActivoId, setAlternandoActivoId] = useState<string | null>(null);
+  const [eliminandoActividadId, setEliminandoActividadId] = useState<string | null>(null);
 
   const cerrarPopup = () => setPopup(initialPopup);
 
@@ -526,6 +527,33 @@ export default function AsignacionPanel() {
       setErrorActividades("No se pudo conectar con el servidor. Intenta de nuevo.");
     } finally {
       setAlternandoActivoId(null);
+    }
+  };
+
+  // Borrado de verdad, solo permitido (por el backend) si la actividad
+  // nunca tuvo avance reportado -- para limpiar una fila de prueba o un
+  // error de tipeo sin que quede dando vueltas como "Inactiva" para
+  // siempre. Si ya tiene historial, hay que desactivarla en su lugar.
+  const eliminarActividad = async (actividadId: string) => {
+    if (!trabajoActividades) return;
+    if (!window.confirm("¿Eliminar esta actividad de forma permanente?")) return;
+    setEliminandoActividadId(actividadId);
+    setErrorActividades(null);
+    try {
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades/${actividadId}`,
+        { method: "DELETE" }
+      );
+      if (res.status === 204) {
+        setActividades((prev) => prev.filter((a) => a.id !== actividadId));
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorActividades(data?.detail ?? "Ocurrio un error al eliminar la actividad.");
+      }
+    } catch {
+      setErrorActividades("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setEliminandoActividadId(null);
     }
   };
 
@@ -953,8 +981,9 @@ export default function AsignacionPanel() {
             </div>
             <p className="text-xs text-slate-400 mb-4">
               "Desactivar" oculta la actividad (deja de contar en el % de avance y de poder
-              reportarse) sin borrarla, para no perder el historial ya reportado sobre ella. Se
-              puede reactivar en cualquier momento.
+              reportarse) sin borrarla, para no perder el historial ya reportado sobre ella; se
+              puede reactivar en cualquier momento. "Eliminar" la borra de verdad y solo aparece
+              si nunca tuvo avance reportado (ej. una de prueba).
             </p>
 
             {errorActividades && (
@@ -1094,6 +1123,16 @@ export default function AsignacionPanel() {
                               ? "Desactivar"
                               : "Activar"}
                           </button>
+                          {!act.tiene_avance && (
+                            <button
+                              onClick={() => eliminarActividad(act.id)}
+                              disabled={eliminandoActividadId === act.id}
+                              title="Nunca tuvo avance reportado, se puede eliminar de verdad"
+                              className="text-sm text-slate-400 hover:text-red-800 font-medium"
+                            >
+                              {eliminandoActividadId === act.id ? "..." : "Eliminar"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1257,6 +1296,16 @@ export default function AsignacionPanel() {
                                     ? "Desactivar"
                                     : "Activar"}
                                 </button>
+                                {!act.tiene_avance && (
+                                  <button
+                                    onClick={() => eliminarActividad(act.id)}
+                                    disabled={eliminandoActividadId === act.id}
+                                    title="Nunca tuvo avance reportado, se puede eliminar de verdad"
+                                    className="text-sm text-slate-400 hover:text-red-800 font-medium px-2 py-1"
+                                  >
+                                    {eliminandoActividadId === act.id ? "..." : "Eliminar"}
+                                  </button>
+                                )}
                               </div>
                             )}
                           </td>

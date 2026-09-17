@@ -1559,6 +1559,35 @@ def alternar_activo_actividad(
     return fila
 
 
+@app.delete(
+    "/api/admin/trabajos/{trabajo_id}/actividades/{actividad_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def eliminar_actividad_de_trabajo(
+    trabajo_id: str,
+    actividad_id: str,
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> None:
+    """Borra de verdad una actividad, solo si nunca tuvo avance reportado
+    (ej. una de prueba agregada por error): si ya tiene historial, hay que
+    desactivarla en su lugar (PUT .../activo) para no perderlo."""
+    _obtener_actividad_del_trabajo_o_404(trabajo_id, actividad_id)
+
+    if _cantidad_acumulada(actividad_id) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede eliminar: esta actividad ya tiene avance reportado. Desactivala en su lugar.",
+        )
+
+    try:
+        supabase.table("actividades").delete().eq("id", actividad_id).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al eliminar la actividad.",
+        ) from exc
+
+
 @app.get("/api/mis-trabajos", response_model=list[TrabajoConActividadesOut])
 def listar_mis_trabajos(
     usuario: UsuarioActual = Depends(get_usuario_actual),
