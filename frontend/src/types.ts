@@ -54,6 +54,7 @@ export type Actividad = {
   hw_actividad: string | null;
   qty: string | null;
   avance: string | null;
+  activo: boolean;
 };
 
 export type ActividadAdmin = Actividad & {

@@ -189,7 +189,7 @@ export default function AsignacionPanel() {
     avance: "",
   });
   const [guardandoActividad, setGuardandoActividad] = useState(false);
-  const [eliminandoActividadId, setEliminandoActividadId] = useState<string | null>(null);
+  const [alternandoActivoId, setAlternandoActivoId] = useState<string | null>(null);
 
   const cerrarPopup = () => setPopup(initialPopup);
 
@@ -330,7 +330,11 @@ export default function AsignacionPanel() {
       if (res.ok) {
         const sinCoincidencia: string[] = data?.sitios_no_encontrados ?? [];
         const cargadas: number = data?.actividades_cargadas ?? 0;
+        const desactivadas: number = data?.actividades_desactivadas ?? 0;
         let mensaje = `Se cargaron ${cargadas} actividad(es).`;
+        if (desactivadas > 0) {
+          mensaje += ` Se desactivaron ${desactivadas} que ya no vinieron en el archivo.`;
+        }
         if (sinCoincidencia.length > 0) {
           mensaje += ` No se encontro asignacion para estos sites: ${sinCoincidencia.join(", ")}.`;
           if (cargadas === 0) {
@@ -458,6 +462,10 @@ export default function AsignacionPanel() {
 
   const guardarEdicionActividad = async (actividadId: string) => {
     if (!trabajoActividades || !actividadEditada.actividad.trim()) return;
+    // El activo actual se reenvia tal cual (el formulario de edicion no lo
+    // toca): sin esto, el default del backend reactivaria sin querer una
+    // actividad desactivada con solo corregirle un typo y guardar.
+    const activoActual = actividades.find((a) => a.id === actividadId)?.activo ?? true;
     setGuardandoActividad(true);
     setErrorActividades(null);
     try {
@@ -472,6 +480,7 @@ export default function AsignacionPanel() {
             hw_actividad: actividadEditada.hw_actividad.trim() || null,
             qty: actividadEditada.qty.trim() || null,
             avance: actividadEditada.avance.trim() || null,
+            activo: activoActual,
           }),
         }
       );
@@ -490,26 +499,33 @@ export default function AsignacionPanel() {
     }
   };
 
-  const eliminarActividad = async (actividadId: string) => {
+  // "Eliminar" una actividad nunca la borra de verdad (perderia el
+  // historial de avance ya reportado sobre ella si tiene): solo se
+  // desactiva/activa, igual que el resto de la app (usuarios, catalogos).
+  const alternarActivoActividad = async (act: ActividadAdmin) => {
     if (!trabajoActividades) return;
-    if (!window.confirm("¿Eliminar esta actividad?")) return;
-    setEliminandoActividadId(actividadId);
+    setAlternandoActivoId(act.id);
     setErrorActividades(null);
     try {
       const res = await fetchAutenticado(
-        `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades/${actividadId}`,
-        { method: "DELETE" }
+        `${API_URL}/api/admin/trabajos/${trabajoActividades.id}/actividades/${act.id}/activo`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ activo: !act.activo }),
+        }
       );
-      if (res.status === 204) {
-        setActividades((prev) => prev.filter((a) => a.id !== actividadId));
+      if (res.ok) {
+        const actualizada: ActividadAdmin = await res.json();
+        setActividades((prev) => prev.map((a) => (a.id === actualizada.id ? actualizada : a)));
       } else {
         const data = await res.json().catch(() => null);
-        setErrorActividades(data?.detail ?? "Ocurrio un error al eliminar la actividad.");
+        setErrorActividades(data?.detail ?? "Ocurrio un error al actualizar la actividad.");
       }
     } catch {
       setErrorActividades("No se pudo conectar con el servidor. Intenta de nuevo.");
     } finally {
-      setEliminandoActividadId(null);
+      setAlternandoActivoId(null);
     }
   };
 
@@ -936,8 +952,9 @@ export default function AsignacionPanel() {
               </button>
             </div>
             <p className="text-xs text-slate-400 mb-4">
-              Las actividades con avance reportado no se pueden eliminar, para no perder el
-              historial del lider de cuadrilla.
+              "Desactivar" oculta la actividad (deja de contar en el % de avance y de poder
+              reportarse) sin borrarla, para no perder el historial ya reportado sobre ella. Se
+              puede reactivar en cualquier momento.
             </p>
 
             {errorActividades && (
@@ -1033,10 +1050,21 @@ export default function AsignacionPanel() {
                         key={act.id}
                         className={
                           "rounded-lg border p-3 " +
-                          (act.tiene_avance ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200")
+                          (!act.activo
+                            ? "border-slate-200 bg-slate-50 opacity-60"
+                            : act.tiene_avance
+                            ? "border-emerald-200 bg-emerald-50/40"
+                            : "border-slate-200")
                         }
                       >
-                        <p className="font-medium text-slate-800">{act.actividad ?? "—"}</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-slate-800">{act.actividad ?? "—"}</p>
+                          {!act.activo && (
+                            <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                              Inactiva
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-500 mt-0.5">
                           {[act.tipificacion, act.hw_actividad].filter(Boolean).join(" · ") || "—"}
                         </p>
@@ -1051,16 +1079,20 @@ export default function AsignacionPanel() {
                             Editar
                           </button>
                           <button
-                            onClick={() => eliminarActividad(act.id)}
-                            disabled={act.tiene_avance || eliminandoActividadId === act.id}
-                            title={
-                              act.tiene_avance
-                                ? "Ya tiene avance reportado, no se puede eliminar"
-                                : undefined
+                            onClick={() => alternarActivoActividad(act)}
+                            disabled={alternandoActivoId === act.id}
+                            className={
+                              "text-sm font-medium " +
+                              (act.activo
+                                ? "text-red-600 hover:text-red-800"
+                                : "text-emerald-600 hover:text-emerald-800")
                             }
-                            className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium"
                           >
-                            {eliminandoActividadId === act.id ? "..." : "Eliminar"}
+                            {alternandoActivoId === act.id
+                              ? "..."
+                              : act.activo
+                              ? "Desactivar"
+                              : "Activar"}
                           </button>
                         </div>
                       </div>
@@ -1092,7 +1124,13 @@ export default function AsignacionPanel() {
                     {actividades.map((act) => {
                       const editando = actividadEditandoId === act.id;
                       return (
-                        <tr key={act.id} className="border-b border-slate-100 last:border-0 align-top">
+                        <tr
+                          key={act.id}
+                          className={
+                            "border-b border-slate-100 last:border-0 align-top " +
+                            (!act.activo ? "opacity-50" : "")
+                          }
+                        >
                           <td className="py-2 pr-3">
                             {editando ? (
                               <input
@@ -1105,7 +1143,14 @@ export default function AsignacionPanel() {
                                 autoFocus
                               />
                             ) : (
-                              act.actividad ?? "—"
+                              <>
+                                {act.actividad ?? "—"}
+                                {!act.activo && (
+                                  <span className="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                                    Inactiva
+                                  </span>
+                                )}
+                              </>
                             )}
                           </td>
                           <td className="py-2 pr-3">
@@ -1197,16 +1242,20 @@ export default function AsignacionPanel() {
                                   Editar
                                 </button>
                                 <button
-                                  onClick={() => eliminarActividad(act.id)}
-                                  disabled={act.tiene_avance || eliminandoActividadId === act.id}
-                                  title={
-                                    act.tiene_avance
-                                      ? "Ya tiene avance reportado, no se puede eliminar"
-                                      : undefined
+                                  onClick={() => alternarActivoActividad(act)}
+                                  disabled={alternandoActivoId === act.id}
+                                  className={
+                                    "text-sm font-medium px-2 py-1 " +
+                                    (act.activo
+                                      ? "text-red-600 hover:text-red-800"
+                                      : "text-emerald-600 hover:text-emerald-800")
                                   }
-                                  className="text-sm text-red-600 hover:text-red-800 disabled:text-slate-300 font-medium px-2 py-1"
                                 >
-                                  {eliminandoActividadId === act.id ? "..." : "Eliminar"}
+                                  {alternandoActivoId === act.id
+                                    ? "..."
+                                    : act.activo
+                                    ? "Desactivar"
+                                    : "Activar"}
                                 </button>
                               </div>
                             )}

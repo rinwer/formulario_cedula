@@ -379,6 +379,7 @@ class ActividadOut(BaseModel):
     hw_actividad: str | None
     qty: str | None
     avance: str | None
+    activo: bool = True
 
 
 class TrabajoConActividadesOut(TrabajoOut):
@@ -400,7 +401,11 @@ class ActividadCreate(BaseModel):
 
 
 class ActividadUpdate(ActividadCreate):
-    pass
+    activo: bool = True
+
+
+class ActividadActivoUpdate(BaseModel):
+    activo: bool
 
 
 class ActividadAdminOut(ActividadOut):
@@ -410,6 +415,7 @@ class ActividadAdminOut(ActividadOut):
 class ImportarActividadesResultado(BaseModel):
     actividades_cargadas: int
     sitios_no_encontrados: list[str]
+    actividades_desactivadas: int = 0
 
 
 class AvanceDetalleIn(BaseModel):
@@ -1181,10 +1187,11 @@ def importar_actividades(
     HW-ACTIVIDAD, QTY, AVANCE. Cada fila se liga al trabajo cuyo site
     coincida (sin distinguir mayusculas ni espacios de mas). Las filas que
     coincidan (por actividad+tipificacion+hw-actividad) con una actividad
-    ya existente en ese trabajo se actualizan en su lugar; las demas se
-    insertan como nuevas. Nunca se borra una actividad existente aqui, para
-    no perder el historial de avance ya reportado sobre ella (cascade
-    delete de avances_diarios_detalle)."""
+    ya existente en ese trabajo se actualizan en su lugar (reactivandola si
+    estaba desactivada); las demas se insertan como nuevas. Las actividades
+    existentes de esos trabajos que ya NO vengan en este CSV se desactivan
+    (nunca se borran, para no perder el historial de avance ya reportado
+    sobre ellas)."""
     try:
         texto = archivo.file.read().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -1256,7 +1263,7 @@ def importar_actividades(
         try:
             existentes_resp = (
                 supabase.table("actividades")
-                .select("id, trabajo_id, actividad, tipificacion, hw_actividad")
+                .select("id, trabajo_id, actividad, tipificacion, hw_actividad, activo")
                 .in_("trabajo_id", trabajo_ids_afectados)
                 .execute()
             )
@@ -1281,9 +1288,21 @@ def importar_actividades(
                 )
                 id_existente = id_existente_por_clave.get(clave)
                 if id_existente:
-                    filas_a_actualizar.append({**fila, "id": id_existente})
+                    # Reaparece en el CSV: si estaba desactivada (por una
+                    # carga anterior que ya no la traia), vuelve a activarse.
+                    filas_a_actualizar.append({**fila, "id": id_existente, "activo": True})
                 else:
-                    filas_a_insertar.append(fila)
+                    filas_a_insertar.append({**fila, "activo": True})
+
+        # Las actividades existentes de estos trabajos que NO vinieron en
+        # este CSV ya no aplican: se desactivan (nunca se borran, para no
+        # perder el historial de avance ya reportado sobre ellas).
+        ids_actualizados = {f["id"] for f in filas_a_actualizar}
+        ids_a_desactivar = [
+            e["id"]
+            for e in existentes_resp.data or []
+            if e["id"] not in ids_actualizados and e.get("activo", True)
+        ]
 
         try:
             # Actualizar e insertar van en llamadas separadas (no un solo
@@ -1297,6 +1316,10 @@ def importar_actividades(
                 supabase.table("actividades").upsert(filas_a_actualizar).execute()
             if filas_a_insertar:
                 supabase.table("actividades").insert(filas_a_insertar).execute()
+            if ids_a_desactivar:
+                supabase.table("actividades").update({"activo": False}).in_(
+                    "id", ids_a_desactivar
+                ).execute()
             actividades_cargadas = len(filas_a_actualizar) + len(filas_a_insertar)
         except Exception as exc:
             raise HTTPException(
@@ -1307,6 +1330,7 @@ def importar_actividades(
     return {
         "actividades_cargadas": actividades_cargadas,
         "sitios_no_encontrados": sitios_no_encontrados,
+        "actividades_desactivadas": len(ids_a_desactivar) if trabajo_ids_afectados else 0,
     }
 
 
@@ -1353,14 +1377,15 @@ def listar_actividades_de_trabajo(
     trabajo_id: str,
     _admin: UsuarioActual = Depends(requerir_staff),
 ) -> list[dict]:
-    """Lista las actividades de un trabajo para el popup de edicion,
-    marcando cuales ya tienen avance reportado (esas no se pueden borrar)."""
+    """Lista TODAS las actividades de un trabajo (activas e inactivas)
+    para el popup de edicion, marcando cuales ya tienen avance reportado
+    (informativo; ya no bloquea nada, ver actualizar_actividad_de_trabajo)."""
     _obtener_trabajo_o_404(trabajo_id)
 
     try:
         actividades_resp = (
             supabase.table("actividades")
-            .select("id, actividad, tipificacion, hw_actividad, qty, avance")
+            .select("id, actividad, tipificacion, hw_actividad, qty, avance, activo")
             .eq("trabajo_id", trabajo_id)
             .order("created_at")
             .execute()
@@ -1477,6 +1502,7 @@ def actualizar_actividad_de_trabajo(
                     "hw_actividad": payload.hw_actividad,
                     "qty": payload.qty,
                     "avance": payload.avance,
+                    "activo": payload.activo,
                 }
             )
             .eq("id", actividad_id)
@@ -1496,30 +1522,41 @@ def actualizar_actividad_de_trabajo(
     return fila
 
 
-@app.delete(
-    "/api/admin/trabajos/{trabajo_id}/actividades/{actividad_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+@app.put(
+    "/api/admin/trabajos/{trabajo_id}/actividades/{actividad_id}/activo",
+    response_model=ActividadAdminOut,
 )
-def eliminar_actividad_de_trabajo(
+def alternar_activo_actividad(
     trabajo_id: str,
     actividad_id: str,
+    payload: ActividadActivoUpdate,
     _admin: UsuarioActual = Depends(requerir_staff),
-) -> None:
+) -> dict:
+    """Activa/desactiva una actividad sin tocar sus demas campos. Aparte
+    del PUT completo (que exige 'actividad' no vacio) porque algunas filas
+    viejas importadas por CSV pueden tener ese campo en null, y el boton de
+    desactivar/activar debe funcionar igual para esas."""
     _obtener_actividad_del_trabajo_o_404(trabajo_id, actividad_id)
 
-    if _cantidad_acumulada(actividad_id) > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se puede eliminar: esta actividad ya tiene avance reportado por el lider.",
-        )
-
     try:
-        supabase.table("actividades").delete().eq("id", actividad_id).execute()
+        response = (
+            supabase.table("actividades")
+            .update({"activo": payload.activo})
+            .eq("id", actividad_id)
+            .execute()
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al eliminar la actividad.",
+            detail="Error interno al actualizar la actividad.",
         ) from exc
+
+    if not response.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontro la actividad.")
+
+    fila = response.data[0]
+    fila["tiene_avance"] = _cantidad_acumulada(actividad_id) > 0
+    return fila
 
 
 @app.get("/api/mis-trabajos", response_model=list[TrabajoConActividadesOut])
@@ -1561,7 +1598,7 @@ def listar_mis_trabajos(
             supabase.table("trabajos")
             .select(
                 "id, id_smp, site, zona, lider_id, estado, "
-                "actividades(id, actividad, tipificacion, hw_actividad, qty, avance)"
+                "actividades(id, actividad, tipificacion, hw_actividad, qty, avance, activo)"
             )
             .in_("id", trabajo_ids_hoy)
             .eq("estado", "asignado")
@@ -1913,7 +1950,7 @@ def obtener_vista_trabajos_por_fecha(
     try:
         query = supabase.table("trabajos").select(
             "id, id_smp, site, zona, estado, created_at, "
-            "actividades(id, actividad, hw_actividad, qty)"
+            "actividades(id, actividad, hw_actividad, qty, activo)"
         )
         if trabajo_ids_filtro:
             query = query.in_("id", trabajo_ids_filtro)
@@ -2264,9 +2301,15 @@ def obtener_vista_trabajos_por_fecha(
             for actividad_id, cantidad in cantidad_por_actividad.items()
         ]
 
+        # Una actividad desactivada (ya no viene en el CSV, o el admin la
+        # desactivo a mano) deja de contar en el % de avance -- el
+        # historial que ya tenia reportado sigue intacto y visible en
+        # "detalle_resumen" (arriba), solo deja de sumar al total.
         qty_total = 0.0
         acumulado_total = 0.0
         for actividad in actividades_por_trabajo.get(trabajo["id"], []):
+            if not actividad.get("activo", True):
+                continue
             try:
                 qty_actividad = float(actividad["qty"])
             except (TypeError, ValueError):
@@ -2565,7 +2608,7 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
     try:
         trabajo_resp = (
             supabase.table("trabajos")
-            .select("id, site, zona, actividades(id, qty, hw_actividad, actividad)")
+            .select("id, site, zona, actividades(id, qty, hw_actividad, actividad, activo)")
             .eq("id", trabajo_id)
             .single()
             .execute()
@@ -2580,8 +2623,13 @@ def _filas_export_historial_site(trabajo_id: str) -> tuple[str, list[list]]:
     hw_por_actividad = {
         act["id"]: act.get("hw_actividad") or act.get("actividad") or "—" for act in actividades
     }
+    # hw_por_actividad se arma con TODAS (para etiquetar detalle historico
+    # aunque la actividad ya este desactivada); qty_por_actividad solo con
+    # las activas, para que el % de avance no cuente scope que ya se quito.
     qty_por_actividad: dict[str, float] = {}
     for act in actividades:
+        if not act.get("activo", True):
+            continue
         try:
             qty_por_actividad[act["id"]] = float(act["qty"])
         except (TypeError, ValueError):

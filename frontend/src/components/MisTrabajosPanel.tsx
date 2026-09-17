@@ -152,6 +152,13 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
   const [historial, setHistorial] = useState<AvanceDiario[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
+  // Una actividad desactivada (ya no viene en el CSV, o el admin la
+  // desactivo a mano) deja de ser reportable y de contar en el % de
+  // avance; hwActividadPorId es la excepcion: se arma con TODAS para que
+  // el historial de avances viejos siga mostrando el nombre correcto
+  // aunque esa actividad ya este desactivada.
+  const actividadesActivas = trabajo.actividades.filter((a) => a.activo);
+
   const hwActividadPorId: Record<string, string> = {};
   trabajo.actividades.forEach((a) => {
     hwActividadPorId[a.id] = a.hw_actividad ?? "(sin HW-Actividad)";
@@ -165,7 +172,7 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
   });
 
   const actividadesCompletas = new Set(
-    trabajo.actividades
+    actividadesActivas
       .filter((a) => {
         const qtyMax = qtyNumerico(a.qty);
         const acumulado = acumuladoPorActividad[a.id] ?? 0;
@@ -177,7 +184,7 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
   // Cuanto le falta a cada actividad (qty - acumulado). null = sin qty
   // numerico, no se puede limitar.
   const pendientePorActividad: Record<string, number | null> = {};
-  trabajo.actividades.forEach((a) => {
+  actividadesActivas.forEach((a) => {
     const qtyMax = qtyNumerico(a.qty);
     const acumulado = acumuladoPorActividad[a.id] ?? 0;
     pendientePorActividad[a.id] = qtyMax !== null ? Math.max(qtyMax - acumulado, 0) : null;
@@ -200,7 +207,7 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
   // qty y el acumulado de todas las filas (HW-Actividad) que comparten
   // ese nombre.
   const gruposPorActividad: Record<string, { qtyTotal: number; acumuladoTotal: number }> = {};
-  trabajo.actividades.forEach((a) => {
+  actividadesActivas.forEach((a) => {
     const qty = qtyNumerico(a.qty);
     if (qty === null) return;
     const nombre = a.actividad ?? "(sin nombre)";
@@ -216,7 +223,7 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
   // colapsado sin tener que desplegar la tarjeta.
   let qtyTotalGeneral = 0;
   let acumuladoTotalGeneral = 0;
-  trabajo.actividades.forEach((a) => {
+  actividadesActivas.forEach((a) => {
     const qty = qtyNumerico(a.qty);
     if (qty === null) return;
     qtyTotalGeneral += qty;
@@ -443,7 +450,7 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
                       horizontal (la tabla de abajo es incomoda de usar con
                       el dedo en un celular). */}
                   <div className="flex flex-col gap-2 md:hidden">
-                    {trabajo.actividades.map((actividad) => {
+                    {actividadesActivas.map((actividad) => {
                       const qtyMax = qtyNumerico(actividad.qty);
                       const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
                       const completa = actividadesCompletas.has(actividad.id);
@@ -514,7 +521,7 @@ function TrabajoCard({ trabajo, catalogoOfensor, catalogoTipoTrabajo }: TrabajoC
                         </tr>
                       </thead>
                       <tbody>
-                        {trabajo.actividades.map((actividad) => {
+                        {actividadesActivas.map((actividad) => {
                           const qtyMax = qtyNumerico(actividad.qty);
                           const acumulado = acumuladoPorActividad[actividad.id] ?? 0;
                           const completa = actividadesCompletas.has(actividad.id);

@@ -235,10 +235,15 @@ create table if not exists public.actividades (
   hw_actividad text,
   qty text,
   avance text,
+  activo boolean not null default true,
   created_at timestamptz not null default now()
 );
 
+-- Por si la tabla ya existia de una corrida anterior de este script.
+alter table public.actividades add column if not exists activo boolean not null default true;
+
 comment on table public.actividades is 'Actividades por site importadas desde CSV, ligadas a trabajos.id.';
+comment on column public.actividades.activo is 'Si es false, la linea ya no aplica (se quito del CSV o el admin la desactivo a mano); nunca se borra para no perder el historial de avance ya reportado sobre ella.';
 
 create index if not exists idx_actividades_trabajo_id on public.actividades (trabajo_id);
 

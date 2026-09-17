@@ -226,14 +226,23 @@ export default function VerTrabajosPanel() {
                         key={a.id}
                         className={
                           "rounded-lg border p-3 " +
-                          (completa
+                          (!a.activo
+                            ? "border-slate-200 bg-slate-50 opacity-60"
+                            : completa
                             ? "border-emerald-200 bg-emerald-50"
                             : acumulado === 0
                             ? "border-amber-200 bg-amber-50"
                             : "border-slate-200")
                         }
                       >
-                        <p className="font-medium text-slate-800">{a.actividad ?? "—"}</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-slate-800">{a.actividad ?? "—"}</p>
+                          {!a.activo && (
+                            <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                              Inactiva
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-500 mt-0.5">
                           {[a.tipificacion, a.hw_actividad].filter(Boolean).join(" · ") || "—"}
                         </p>
@@ -283,14 +292,23 @@ export default function VerTrabajosPanel() {
                             key={a.id}
                             className={
                               "border-b border-slate-100 last:border-0 " +
-                              (completa
+                              (!a.activo
+                                ? "opacity-50"
+                                : completa
                                 ? "bg-emerald-50"
                                 : acumulado === 0
                                 ? "bg-amber-50"
                                 : "")
                             }
                           >
-                            <td className="py-2 pr-4 text-slate-700">{a.actividad ?? "—"}</td>
+                            <td className="py-2 pr-4 text-slate-700">
+                              {a.actividad ?? "—"}
+                              {!a.activo && (
+                                <span className="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                                  Inactiva
+                                </span>
+                              )}
+                            </td>
                             <td className="py-2 pr-4 text-slate-700">{a.tipificacion ?? "—"}</td>
                             <td className="py-2 pr-4 text-slate-700">{a.hw_actividad ?? "—"}</td>
                             <td className="py-2 pr-4 text-slate-700">{a.qty ?? "—"}</td>
