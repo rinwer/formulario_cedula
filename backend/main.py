@@ -7,6 +7,7 @@ import csv
 import io
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -1990,8 +1991,14 @@ def obtener_vista_trabajos_por_fecha(
     # programacion (ver mas abajo): la tabla programacion es mas nueva
     # que avances_diarios, asi que dias viejos pueden tener avance
     # reportado sin tener programacion.
-    try:
-        avances_resp = (
+    # Estas tres consultas son independientes entre si (todas solo
+    # necesitan activo_ids, ninguna depende del resultado de las otras),
+    # asi que se piden en paralelo en vez de una tras otra: cada round-
+    # trip a Supabase pesa varios cientos de ms, y pedirlas en serie era
+    # el mayor cuello de botella de esta funcion (ver medicion que llevo
+    # a este cambio).
+    def _consultar_avances():
+        return (
             supabase.table("avances_diarios")
             .select(
                 "id, trabajo_id, lider_id, comentario, created_at, "
@@ -2003,11 +2010,56 @@ def obtener_vista_trabajos_por_fecha(
             .order("created_at")
             .execute()
         )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener los avances del dia.",
-        ) from exc
+
+    def _consultar_programacion_hoy():
+        return (
+            supabase.table("programacion")
+            .select(
+                "trabajo_id, lider_id, lider:profiles!lider_id(nombre_completo, email, activo), "
+                "asignador:profiles!asignado_por(nombre_completo, email)"
+            )
+            .in_("trabajo_id", activo_ids)
+            .eq("fecha", fecha_obj.isoformat())
+            .execute()
+        )
+
+    def _consultar_historial_programacion():
+        return (
+            supabase.table("programacion")
+            .select("trabajo_id, lider_id, fecha")
+            .in_("trabajo_id", activo_ids)
+            .lte("fecha", fecha_obj.isoformat())
+            .execute()
+        )
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futuro_avances = executor.submit(_consultar_avances)
+        futuro_programacion = executor.submit(_consultar_programacion_hoy)
+        futuro_historial_programacion = executor.submit(_consultar_historial_programacion)
+
+        try:
+            avances_resp = futuro_avances.result()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener los avances del dia.",
+            ) from exc
+
+        try:
+            programacion_resp = futuro_programacion.result()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener la programacion de esa fecha.",
+            ) from exc
+
+        try:
+            historial_programacion_resp = futuro_historial_programacion.result()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener el historial de programacion.",
+            ) from exc
 
     avances_hasta_fecha = avances_resp.data or []
     avances_del_dia = [
@@ -2023,23 +2075,6 @@ def obtener_vista_trabajos_por_fecha(
     # PostgREST) en vez de una consulta aparte a profiles; se especifica
     # "profiles!lider_id" porque programacion tambien tiene un FK a
     # profiles via asignado_por y un embed sin calificar es ambiguo.
-    try:
-        programacion_resp = (
-            supabase.table("programacion")
-            .select(
-                "trabajo_id, lider_id, lider:profiles!lider_id(nombre_completo, email, activo), "
-                "asignador:profiles!asignado_por(nombre_completo, email)"
-            )
-            .in_("trabajo_id", activo_ids)
-            .eq("fecha", fecha_obj.isoformat())
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener la programacion de esa fecha.",
-        ) from exc
-
     lider_id_por_trabajo: dict[str, str] = {}
     perfiles_lideres: dict[str, dict] = {}
     asignador_por_trabajo: dict[str, dict] = {}
@@ -2090,23 +2125,9 @@ def obtener_vista_trabajos_por_fecha(
     # eso) reportando avance -- para que un dia viejo sin fila en
     # programacion no le reste antiguedad al lider. Si se reasigna a otro
     # lider, el contador se reinicia para el nuevo. Se combina el
-    # historial de programacion con el de avances_diarios (ya disponible
-    # arriba), tomando la fecha mas temprana entre ambas fuentes por
-    # combinacion trabajo+lider.
-    try:
-        historial_programacion_resp = (
-            supabase.table("programacion")
-            .select("trabajo_id, lider_id, fecha")
-            .in_("trabajo_id", activo_ids)
-            .lte("fecha", fecha_obj.isoformat())
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener el historial de programacion.",
-        ) from exc
-
+    # historial de programacion (ya pedido en paralelo arriba) con el de
+    # avances_diarios (ya disponible arriba), tomando la fecha mas
+    # temprana entre ambas fuentes por combinacion trabajo+lider.
     primera_fecha_por_trabajo_lider: dict[tuple[str, str], date] = {}
     for fila_historial_prog in historial_programacion_resp.data or []:
         clave = (fila_historial_prog["trabajo_id"], fila_historial_prog["lider_id"])
