@@ -4,23 +4,28 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Acento de la identidad "Claro neutro": un taupe/cobre atenuado
-        // (no el cobre vivo original) sobre un fondo claro en toda la
-        // app. Se mantiene el nombre "cobre" para no tener que renombrar
-        // clases en cada componente.
+        // Colores corporativos de Temwok (navy #103255 como color primario
+        // de la app). Se mantiene el nombre "cobre" para no tener que
+        // renombrar clases en cada componente; el 600 es el navy exacto de
+        // la guia de marca.
         cobre: {
-          50: "#FAF7F4",
-          100: "#F1EAE3",
-          200: "#E1D2C4",
-          300: "#CDB29C",
-          400: "#B08F72",
-          500: "#9C7A5F",
-          600: "#8C6E58",
-          700: "#755A47",
-          800: "#5F4838",
-          900: "#4A382C",
-          950: "#2E231B",
+          50: "#F3F7FC",
+          100: "#E2EDF8",
+          200: "#C1D8F0",
+          300: "#8CB7E4",
+          400: "#3E8BDB",
+          500: "#1F60A3",
+          600: "#103255",
+          700: "#0D2743",
+          800: "#091D31",
+          900: "#061422",
+          950: "#040B13",
         },
+        // Rojo de acento de la marca, para impacto/CTA puntual (no se usa
+        // para errores: esos siguen con el rojo semantico de Tailwind).
+        temwokRojo: "#E30535",
+        // Azul cielo de la marca, para contraste/fondos secundarios.
+        temwokCielo: "#AFDFF7",
       },
     },
   },
