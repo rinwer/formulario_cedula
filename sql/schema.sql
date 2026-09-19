@@ -441,6 +441,16 @@ alter table public.avances_diarios
   add column if not exists tipo_trabajo_id uuid references public.catalogo_opciones (id) on delete set null;
 comment on column public.avances_diarios.tipo_trabajo_id is 'Tipo de trabajo que el lider ejecuto ese dia (obligatorio al reportar; puede diferir del de su perfil), de catalogo_opciones.';
 
+-- Diligenciado por un coordinador/administrador en nombre del lider: null
+-- (lo normal) es que el propio lider reporto en tiempo real; si tiene un
+-- profiles.id es porque un dia quedo "Sin actualizar" y un coordinador lo
+-- registro despues (ej. tras una llamada), para no dejar el hueco sin
+-- documentar. Se marca aparte para no confundirlo con un reporte real del
+-- lider ese mismo dia.
+alter table public.avances_diarios
+  add column if not exists registrado_por uuid references public.profiles (id) on delete set null;
+comment on column public.avances_diarios.registrado_por is 'Si no es null, un coordinador/administrador registro este avance retroactivamente en nombre del lider (en vez de que el lider lo haya reportado el mismo dia).';
+
 -- ---------------------------------------------------------
 -- 10. Bootstrap del primer administrador (ejecutar una sola vez)
 -- ---------------------------------------------------------

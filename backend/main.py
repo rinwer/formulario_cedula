@@ -8,7 +8,7 @@ import io
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
@@ -438,6 +438,11 @@ class AvanceDiarioCreate(BaseModel):
         return value or None
 
 
+class AvanceRetroactivoCreate(AvanceDiarioCreate):
+    fecha: str
+    lider_id: str
+
+
 class AvanceDetalleOut(BaseModel):
     actividad_id: str
     cantidad: int
@@ -478,6 +483,7 @@ class AvanceDiarioAdminOut(BaseModel):
     asignado_por_email: str | None = None
     tipos_trabajo: list[str] = []
     ofensores: list[str] = []
+    diligenciado_por: list[str] = []
 
 
 class HistorialSiteOut(BaseModel):
@@ -1824,6 +1830,170 @@ def registrar_avance_diario(
     return avance_diario
 
 
+@app.post(
+    "/api/admin/trabajos/{trabajo_id}/avances-retroactivos",
+    response_model=AvanceDiarioOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def registrar_avance_retroactivo(
+    trabajo_id: str,
+    payload: AvanceRetroactivoCreate,
+    admin: UsuarioActual = Depends(requerir_staff),
+) -> dict:
+    """Permite a un coordinador/administrador registrar, en nombre de un
+    lider, el avance de un dia YA PASADO que quedo 'Sin actualizar' en el
+    Daily (tipicamente tras hablar con el lider por telefono). Se guarda
+    con registrado_por para no confundirlo con un reporte real del lider
+    ese mismo dia. Nunca se puede usar para hoy ni para una fecha futura:
+    eso sigue siendo trabajo del lider."""
+    _obtener_trabajo_o_404(trabajo_id)
+
+    try:
+        fecha_obj = date.fromisoformat(payload.fecha)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fecha invalida, usa el formato YYYY-MM-DD.",
+        ) from exc
+
+    if fecha_obj >= datetime.now(ZONA_COLOMBIA).date():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Solo se puede registrar retroactivamente un dia ya pasado.",
+        )
+
+    try:
+        supabase.table("profiles").select("id").eq("id", payload.lider_id).single().execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El lider indicado no existe.",
+        ) from exc
+
+    if not payload.tipo_trabajo_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selecciona el tipo de trabajo realizado ese dia.",
+        )
+
+    if not payload.comentario and not payload.detalles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ingresa al menos un avance o un comentario.",
+        )
+
+    ofensor_valor = _resolver_opcion_catalogo(payload.ofensor_id, "ofensor")
+    tipo_trabajo_valor = _resolver_opcion_catalogo(payload.tipo_trabajo_id, "tipo_trabajo")
+
+    if payload.detalles:
+        try:
+            actividades_resp = (
+                supabase.table("actividades")
+                .select("id, actividad, qty, avances_diarios_detalle(cantidad)")
+                .eq("trabajo_id", trabajo_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al validar las actividades.",
+            ) from exc
+
+        actividades_del_trabajo = {a["id"]: a for a in actividades_resp.data or []}
+        if any(d.actividad_id not in actividades_del_trabajo for d in payload.detalles):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Una de las actividades no pertenece a este trabajo.",
+            )
+
+        acumulado_por_actividad: dict[str, int] = {
+            actividad_id: sum(d["cantidad"] for d in actividad.get("avances_diarios_detalle") or [])
+            for actividad_id, actividad in actividades_del_trabajo.items()
+        }
+
+        for detalle in payload.detalles:
+            actividad = actividades_del_trabajo[detalle.actividad_id]
+            try:
+                qty_maximo = int(float(actividad["qty"]))
+            except (TypeError, ValueError):
+                continue  # qty no numerico (viene del CSV): no se puede validar tope
+
+            acumulado_previo = acumulado_por_actividad.get(detalle.actividad_id, 0)
+            if acumulado_previo + detalle.cantidad > qty_maximo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"La actividad '{actividad['actividad']}' ya tiene {acumulado_previo} de "
+                        f"{qty_maximo} reportado; no se puede superar el qty."
+                    ),
+                )
+
+    # created_at se fija al mediodia (hora Colombia) de la fecha elegida,
+    # en vez de dejar el default now(): asi el registro cae dentro del
+    # "dia" correcto para el Daily/Programacion/% de avance, en vez de
+    # aparecer como si hubiera pasado hoy.
+    creado_en = datetime.combine(fecha_obj, time(12, 0), tzinfo=ZONA_COLOMBIA)
+
+    try:
+        creado = (
+            supabase.table("avances_diarios")
+            .insert(
+                {
+                    "trabajo_id": trabajo_id,
+                    "lider_id": payload.lider_id,
+                    "comentario": payload.comentario,
+                    "ofensor_id": payload.ofensor_id,
+                    "tipo_trabajo_id": payload.tipo_trabajo_id,
+                    "registrado_por": admin.id,
+                    "created_at": creado_en.isoformat(),
+                }
+            )
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al guardar el avance.",
+        ) from exc
+
+    if not creado.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo confirmar el guardado del avance.",
+        )
+
+    avance_diario = creado.data[0]
+
+    detalles_guardados: list[dict] = []
+    if payload.detalles:
+        try:
+            detalle_resp = (
+                supabase.table("avances_diarios_detalle")
+                .insert(
+                    [
+                        {
+                            "avance_diario_id": avance_diario["id"],
+                            "actividad_id": detalle.actividad_id,
+                            "cantidad": detalle.cantidad,
+                        }
+                        for detalle in payload.detalles
+                    ]
+                )
+                .execute()
+            )
+            detalles_guardados = detalle_resp.data or []
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al guardar el detalle del avance.",
+            ) from exc
+
+    avance_diario["detalles"] = detalles_guardados
+    avance_diario["ofensor_valor"] = ofensor_valor
+    avance_diario["tipo_trabajo_valor"] = tipo_trabajo_valor
+    return avance_diario
+
+
 @app.get(
     "/api/mis-trabajos/{trabajo_id}/avances",
     response_model=list[AvanceDiarioOut],
@@ -2078,7 +2248,8 @@ def obtener_vista_trabajos_por_fecha(
             .select(
                 "id, trabajo_id, lider_id, comentario, created_at, "
                 "ofensor:catalogo_opciones!ofensor_id(valor), "
-                "tipo_trabajo:catalogo_opciones!tipo_trabajo_id(valor)"
+                "tipo_trabajo:catalogo_opciones!tipo_trabajo_id(valor), "
+                "diligenciado_por:profiles!registrado_por(nombre_completo, email)"
             )
             .in_("trabajo_id", activo_ids)
             .lt("created_at", fin.isoformat())
@@ -2313,6 +2484,15 @@ def obtener_vista_trabajos_por_fecha(
                 if (a.get("ofensor") or {}).get("valor")
             )
         )
+        diligenciado_por = list(
+            dict.fromkeys(
+                (a.get("diligenciado_por") or {}).get("nombre_completo")
+                or (a.get("diligenciado_por") or {}).get("email")
+                for a in avances_trabajo
+                if (a.get("diligenciado_por") or {}).get("nombre_completo")
+                or (a.get("diligenciado_por") or {}).get("email")
+            )
+        )
 
         cantidad_por_actividad: dict[str, int] = {}
         for avance in avances_trabajo:
@@ -2373,6 +2553,7 @@ def obtener_vista_trabajos_por_fecha(
                 "asignado_por_email": asignador_por_trabajo.get(trabajo["id"], {}).get("email"),
                 "tipos_trabajo": tipos_trabajo,
                 "ofensores": ofensores,
+                "diligenciado_por": diligenciado_por,
             }
         )
 

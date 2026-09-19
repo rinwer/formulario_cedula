@@ -1,9 +1,232 @@
 import { useEffect, useState } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
-import { AvanceDiarioAdmin, Disponibilidad, LiderLigero, SiteLigero } from "../types";
+import {
+  ActividadAdmin,
+  AvanceDiarioAdmin,
+  CatalogoOpcion,
+  Disponibilidad,
+  LiderLigero,
+  SiteLigero,
+} from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
+
+type ModalRetroactivoProps = {
+  trabajoId: string;
+  site: string;
+  liderId: string;
+  liderNombre: string;
+  fecha: string;
+  catalogoTipoTrabajo: CatalogoOpcion[];
+  catalogoOfensor: CatalogoOpcion[];
+  onCerrar: () => void;
+  onGuardado: () => void;
+};
+
+// Formulario para que un coordinador/administrador registre, en nombre
+// del lider, el avance de un dia YA PASADO que quedo "Sin actualizar"
+// (tipicamente tras hablar con el lider por telefono). Nunca reemplaza
+// el reporte del lider mismo dia: queda marcado como "diligenciado por"
+// para que se note la diferencia en el Daily.
+function ModalAvanceRetroactivo({
+  trabajoId,
+  site,
+  liderId,
+  liderNombre,
+  fecha,
+  catalogoTipoTrabajo,
+  catalogoOfensor,
+  onCerrar,
+  onGuardado,
+}: ModalRetroactivoProps) {
+  const [actividades, setActividades] = useState<ActividadAdmin[]>([]);
+  const [cargandoActividades, setCargandoActividades] = useState(true);
+  const [avances, setAvances] = useState<Record<string, string>>({});
+  const [comentario, setComentario] = useState("");
+  const [tipoTrabajoId, setTipoTrabajoId] = useState("");
+  const [ofensorId, setOfensorId] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchAutenticado(`${API_URL}/api/admin/trabajos/${trabajoId}/actividades`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: ActividadAdmin[]) => setActividades(data.filter((a) => a.activo)))
+      .catch(() => setMensaje("No se pudieron cargar las actividades de este site."))
+      .finally(() => setCargandoActividades(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  const guardar = async () => {
+    if (!tipoTrabajoId) {
+      setMensaje("Selecciona el tipo de trabajo realizado ese dia.");
+      return;
+    }
+    const detalles = Object.entries(avances)
+      .filter(([, valor]) => valor.trim() !== "")
+      .map(([actividad_id, valor]) => ({ actividad_id, cantidad: Number(valor) }));
+    const comentarioLimpio = comentario.trim();
+    if (detalles.some((d) => !Number.isFinite(d.cantidad) || d.cantidad < 0)) {
+      setMensaje("El avance debe ser un numero valido (0 o mas).");
+      return;
+    }
+    if (detalles.length === 0 && !comentarioLimpio) {
+      setMensaje("Ingresa al menos un avance o un comentario.");
+      return;
+    }
+
+    setMensaje(null);
+    setGuardando(true);
+    try {
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/trabajos/${trabajoId}/avances-retroactivos`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fecha,
+            lider_id: liderId,
+            comentario: comentarioLimpio || null,
+            detalles,
+            ofensor_id: ofensorId || null,
+            tipo_trabajo_id: tipoTrabajoId,
+          }),
+        }
+      );
+      if (res.ok) {
+        onGuardado();
+      } else {
+        const data = await res.json().catch(() => null);
+        setMensaje(data?.detail ?? "Ocurrio un error al guardar el avance.");
+      }
+    } catch {
+      setMensaje("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-20">
+      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-5 sm:p-6 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-semibold text-slate-800">Registrar avance de {site}</h3>
+          <button
+            onClick={onCerrar}
+            aria-label="Cerrar"
+            className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-4 capitalize">
+          {liderNombre} · {fechaFormateada}. Este registro queda marcado como diligenciado por ti,
+          no como un reporte del lider.
+        </p>
+
+        {cargandoActividades ? (
+          <p className="text-sm text-slate-500 mb-3">Cargando actividades...</p>
+        ) : actividades.length === 0 ? (
+          <p className="text-sm text-slate-500 mb-3">
+            Este site no tiene actividades activas para reportar avance.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2 mb-4">
+            {actividades.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center justify-between gap-2 border border-slate-200 rounded-md px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm text-slate-700 truncate">
+                    {a.hw_actividad ?? a.actividad ?? "—"}
+                  </p>
+                  <p className="text-xs text-slate-400">Qty: {a.qty ?? "—"}</p>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={avances[a.id] ?? ""}
+                  onChange={(e) =>
+                    setAvances((prev) => ({ ...prev, [a.id]: e.target.value }))
+                  }
+                  className="w-20 rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
+                  placeholder="0"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <label htmlFor="retro-comentario" className="block text-sm font-medium text-slate-700 mb-1">
+          Comentario
+        </label>
+        <textarea
+          id="retro-comentario"
+          value={comentario}
+          onChange={(e) => setComentario(e.target.value)}
+          rows={3}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+          placeholder="Lo que el lider conto por telefono..."
+        />
+
+        <div className="flex flex-col sm:flex-row gap-3 mb-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Tipo de trabajo <span className="text-red-600">*</span>
+            </label>
+            <select
+              value={tipoTrabajoId}
+              onChange={(e) => setTipoTrabajoId(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+            >
+              <option value="">Selecciona una opcion...</option>
+              {catalogoTipoTrabajo.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.valor}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Ofensor</label>
+            <select
+              value={ofensorId}
+              onChange={(e) => setOfensorId(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+            >
+              <option value="">Ninguno</option>
+              {catalogoOfensor.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.valor}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {mensaje && <p className="text-sm text-red-600 mb-3">{mensaje}</p>}
+
+        <button
+          onClick={guardar}
+          disabled={guardando}
+          className="bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 text-white font-medium px-4 py-2 rounded-md transition-colors"
+        >
+          {guardando ? "Guardando..." : "Guardar avance"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function DailyPanel() {
   const [fecha, setFecha] = useState(hoyIso());
@@ -23,6 +246,10 @@ export default function DailyPanel() {
   const [exportando, setExportando] = useState(false);
   const [errorExport, setErrorExport] = useState<string | null>(null);
 
+  const [catalogoTipoTrabajo, setCatalogoTipoTrabajo] = useState<CatalogoOpcion[]>([]);
+  const [catalogoOfensor, setCatalogoOfensor] = useState<CatalogoOpcion[]>([]);
+  const [filaRetroactiva, setFilaRetroactiva] = useState<AvanceDiarioAdmin | null>(null);
+
   useEffect(() => {
     fetchAutenticado(`${API_URL}/api/admin/lideres`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
@@ -37,6 +264,18 @@ export default function DailyPanel() {
       .catch(() => {
         // Si falla, el buscador de "exportar historial de un site" queda
         // sin opciones; el resto del panel sigue funcionando.
+      });
+    fetchAutenticado(`${API_URL}/api/catalogo?categoria=tipo_trabajo`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: CatalogoOpcion[]) => setCatalogoTipoTrabajo(data))
+      .catch(() => {
+        // Si falla, el modal de registro retroactivo queda sin opciones.
+      });
+    fetchAutenticado(`${API_URL}/api/catalogo?categoria=ofensor`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: CatalogoOpcion[]) => setCatalogoOfensor(data))
+      .catch(() => {
+        // Si falla, el modal de registro retroactivo queda sin opciones.
       });
   }, []);
 
@@ -123,6 +362,9 @@ export default function DailyPanel() {
   });
 
   const pendientes = filas.filter((fila) => !fila.actualizado).length;
+  // Solo se puede registrar retroactivamente un dia YA pasado: el de hoy
+  // sigue siendo trabajo del lider, no algo para que el coordinador cubra.
+  const esFechaPasada = fecha < hoyIso();
 
   // Sin actualizar primero para que salten a la vista de inmediato; el
   // orden por site que ya trae el backend se conserva dentro de cada grupo.
@@ -355,6 +597,20 @@ export default function DailyPanel() {
                         {fila.comentarios.join(" | ")}
                       </p>
                     )}
+                    {fila.diligenciado_por.length > 0 && (
+                      <p className="mt-1.5 text-xs text-slate-400 italic">
+                        Diligenciado por: {fila.diligenciado_por.join(" | ")}
+                      </p>
+                    )}
+                    {!fila.actualizado && esFechaPasada && fila.lider_id && (
+                      <button
+                        type="button"
+                        onClick={() => setFilaRetroactiva(fila)}
+                        className="mt-2 text-sm text-cobre-600 hover:text-cobre-800 font-medium"
+                      >
+                        Registrar avance
+                      </button>
+                    )}
                   </div>
                 ))}
                 {noDisponibles.map((d) => (
@@ -387,6 +643,7 @@ export default function DailyPanel() {
                     <th className="py-2 pr-4 font-medium">Ofensor</th>
                     <th className="py-2 pr-4 font-medium">Avance del dia</th>
                     <th className="py-2 pr-4 font-medium">Comentario</th>
+                    <th className="py-2 pr-4 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -443,6 +700,22 @@ export default function DailyPanel() {
                       </td>
                       <td className="py-2 pr-4 text-slate-700">
                         {fila.comentarios.length === 0 ? "—" : fila.comentarios.join(" | ")}
+                        {fila.diligenciado_por.length > 0 && (
+                          <p className="text-xs text-slate-400 italic mt-0.5">
+                            Diligenciado por: {fila.diligenciado_por.join(" | ")}
+                          </p>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {!fila.actualizado && esFechaPasada && fila.lider_id && (
+                          <button
+                            type="button"
+                            onClick={() => setFilaRetroactiva(fila)}
+                            className="text-sm text-cobre-600 hover:text-cobre-800 font-medium whitespace-nowrap"
+                          >
+                            Registrar avance
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -462,6 +735,7 @@ export default function DailyPanel() {
                       <td className="py-2 pr-4 text-slate-400">—</td>
                       <td className="py-2 pr-4 text-slate-400">—</td>
                       <td className="py-2 pr-4 text-slate-700">{d.motivo ?? "—"}</td>
+                      <td className="py-2 pr-4" />
                     </tr>
                   ))}
                 </tbody>
@@ -470,6 +744,25 @@ export default function DailyPanel() {
           )}
         </div>
       </div>
+
+      {filaRetroactiva && filaRetroactiva.lider_id && (
+        <ModalAvanceRetroactivo
+          trabajoId={filaRetroactiva.trabajo_id}
+          site={filaRetroactiva.site}
+          liderId={filaRetroactiva.lider_id}
+          liderNombre={
+            filaRetroactiva.lider_nombre ?? filaRetroactiva.lider_email ?? "el lider"
+          }
+          fecha={fecha}
+          catalogoTipoTrabajo={catalogoTipoTrabajo}
+          catalogoOfensor={catalogoOfensor}
+          onCerrar={() => setFilaRetroactiva(null)}
+          onGuardado={() => {
+            setFilaRetroactiva(null);
+            cargar(fecha);
+          }}
+        />
+      )}
     </div>
   );
 }

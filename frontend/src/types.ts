@@ -106,6 +106,7 @@ export type AvanceDiarioAdmin = {
   asignado_por_email: string | null;
   tipos_trabajo: string[];
   ofensores: string[];
+  diligenciado_por: string[];
 };
 
 export type LineaTiempoItem = {
