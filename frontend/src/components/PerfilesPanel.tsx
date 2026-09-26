@@ -35,15 +35,7 @@ const COLUMNAS_ORDENABLES: { columna: ColumnaOrden; label: string }[] = [
   { columna: "activo", label: "Estado" },
 ];
 
-type PerfilesPanelProps = {
-  // El coordinador ve y edita usuarios igual que el administrador; lo
-  // unico que no puede hacer es dar de alta uno nuevo (el backend
-  // tambien lo bloquea, esto solo evita mostrarle un formulario que le
-  // va a fallar al enviarlo).
-  puedeCrearUsuarios: boolean;
-};
-
-export default function PerfilesPanel({ puedeCrearUsuarios }: PerfilesPanelProps) {
+export default function PerfilesPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombreCompleto, setNombreCompleto] = useState("");
@@ -275,7 +267,6 @@ export default function PerfilesPanel({ puedeCrearUsuarios }: PerfilesPanelProps
 
   return (
     <div className="space-y-6">
-      {puedeCrearUsuarios && (
       <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
         <h2 className="text-lg font-semibold text-slate-800 mb-6">Nuevo usuario</h2>
 
@@ -379,7 +370,6 @@ export default function PerfilesPanel({ puedeCrearUsuarios }: PerfilesPanelProps
           </div>
         </form>
       </div>
-      )}
 
       <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
         <div className="flex items-center justify-between mb-6">

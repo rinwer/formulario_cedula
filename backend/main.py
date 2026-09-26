@@ -129,11 +129,8 @@ CATEGORIAS_CATALOGO = ("tipo_trabajo", "ofensor")
 def requerir_administrador(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ) -> UsuarioActual:
-    """El coordinador tiene los mismos permisos que el administrador en
-    toda la app, EXCEPTO dar de alta un usuario nuevo (ver crear_usuario,
-    el unico endpoint que sigue usando esta dependencia). Para todo lo
-    demas (ver/editar usuarios, catalogos, trabajos, etc.) se usa
-    requerir_staff."""
+    """Solo el administrador (superusuario) puede gestionar usuarios: crear,
+    editar rol/estado, resetear contrasena. Un coordinador no llega aqui."""
     if usuario.role != "administrador":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -145,10 +142,9 @@ def requerir_administrador(
 def requerir_staff(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ) -> UsuarioActual:
-    """Administrador y coordinador comparten practicamente todos los
-    permisos (Trabajos, Programacion, Daily, Perfiles -- ver/editar
-    usuarios y catalogos); la unica excepcion es crear un usuario nuevo,
-    reservada al administrador (ver requerir_administrador)."""
+    """Administrador y coordinador comparten las pestanas operativas
+    (Trabajos, Programacion, Daily); solo el administrador administra
+    usuarios (ver requerir_administrador)."""
     if usuario.role not in ("administrador", "coordinador"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -667,7 +663,7 @@ def obtener_usuario_actual(
 
 @app.get("/api/admin/usuarios", response_model=list[UsuarioOut])
 def listar_usuarios(
-    _admin: UsuarioActual = Depends(requerir_staff),
+    _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> list[dict]:
     try:
         response = (
@@ -739,7 +735,7 @@ def listar_sites(
 def actualizar_usuario(
     usuario_id: str,
     payload: PerfilUpdate,
-    admin: UsuarioActual = Depends(requerir_staff),
+    admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
     if usuario_id == admin.id:
         if payload.role != "administrador":
@@ -823,10 +819,6 @@ def crear_usuario(
     _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
     """Crea un usuario (lider_cuadrilla, coordinador o administrador) en Supabase Auth.
-
-    Unica accion de gestion de usuarios que sigue restringida a
-    administrador (un coordinador puede ver/editar usuarios existentes,
-    ver requerir_staff, pero no dar de alta uno nuevo).
 
     Usa supabase.auth.admin (service_role key) para dar de alta al usuario,
     por lo que la sesion del administrador que hace la peticion (su propio
@@ -923,7 +915,7 @@ def listar_catalogo(
 @app.get("/api/admin/catalogo", response_model=list[CatalogoOpcionOut])
 def listar_catalogo_admin(
     categoria: str = Query(..., description="tipo_trabajo o ofensor"),
-    _admin: UsuarioActual = Depends(requerir_staff),
+    _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> list[dict]:
     """Igual que /api/catalogo pero incluye las opciones desactivadas,
     para poder reactivarlas desde Perfiles."""
@@ -955,7 +947,7 @@ def listar_catalogo_admin(
 )
 def crear_opcion_catalogo(
     payload: CatalogoOpcionCreate,
-    _admin: UsuarioActual = Depends(requerir_staff),
+    _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
     try:
         resp = (
@@ -987,7 +979,7 @@ def crear_opcion_catalogo(
 def actualizar_opcion_catalogo(
     opcion_id: str,
     payload: CatalogoOpcionUpdate,
-    _admin: UsuarioActual = Depends(requerir_staff),
+    _admin: UsuarioActual = Depends(requerir_administrador),
 ) -> dict:
     """Renombra una opcion y/o la activa-desactiva. No se borra de verdad:
     un avance o un perfil viejo puede seguir apuntando a esa opcion, y
