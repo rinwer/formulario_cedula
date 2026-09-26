@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { fetchAutenticado } from "../lib/api";
 import { Calendario, hoyIso } from "./Calendario";
-import { AvanceDiarioAdmin, Disponibilidad, Usuario } from "../types";
+import { AvanceDiarioAdmin, Disponibilidad, LiderLigero } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ? "" : "http://localhost:8000";
 
@@ -201,7 +201,7 @@ export default function ProgramacionPanel() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [lideres, setLideres] = useState<Usuario[]>([]);
+  const [lideres, setLideres] = useState<LiderLigero[]>([]);
   const [trabajoOcupadoId, setTrabajoOcupadoId] = useState<string | null>(null);
   const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
 
@@ -213,7 +213,7 @@ export default function ProgramacionPanel() {
   const [copiando, setCopiando] = useState(false);
   const [mensajeCopiar, setMensajeCopiar] = useState<string | null>(null);
 
-  const lideresHabilitados = lideres.filter((u) => u.role === "lider_cuadrilla" && u.activo);
+  const lideresHabilitados = lideres.filter((u) => u.activo);
 
   // La Programacion es hacia adelante: se puede seguir consultando un
   // dia que ya paso (para saber quien estaba asignado), pero no tiene
@@ -222,9 +222,12 @@ export default function ProgramacionPanel() {
 
   const cargarLideres = async () => {
     try {
-      const res = await fetchAutenticado(`${API_URL}/api/admin/usuarios`);
+      // Endpoint liviano (id, nombre, activo) accesible tambien para
+      // coordinador y visualizador, a diferencia de /api/admin/usuarios
+      // (directorio completo con email/rol, restringido a administrador).
+      const res = await fetchAutenticado(`${API_URL}/api/admin/lideres`);
       if (!res.ok) throw new Error();
-      const data: Usuario[] = await res.json();
+      const data: LiderLigero[] = await res.json();
       setLideres(data);
     } catch {
       // Si falla, no aparecen tarjetas de lider; el resto del panel sigue
