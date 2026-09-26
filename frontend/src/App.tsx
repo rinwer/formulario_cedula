@@ -104,14 +104,13 @@ export default function App() {
     perfil?.role === "coordinador" ||
     perfil?.role === "visualizador";
 
-  // Cada rol ve un subconjunto de pestanas: administrador las ve todas;
-  // coordinador todo menos Perfiles (no gestiona usuarios); visualizador
-  // solo Daily y Gantt (rol de solo lectura).
+  // Cada rol ve un subconjunto de pestanas: administrador y coordinador
+  // ven todas (incluida Perfiles: el coordinador puede ver/editar
+  // usuarios, solo no puede crear uno nuevo -- eso se oculta dentro de
+  // PerfilesPanel); visualizador solo Daily y Gantt (rol de solo lectura).
   const tabsVisibles =
-    perfil?.role === "administrador"
+    perfil?.role === "administrador" || perfil?.role === "coordinador"
       ? TABS
-      : perfil?.role === "coordinador"
-      ? TABS.filter((tab) => tab.key !== "perfiles")
       : perfil?.role === "visualizador"
       ? TABS.filter((tab) => tab.key === "daily" || tab.key === "gantt")
       : [];
@@ -215,7 +214,10 @@ export default function App() {
       >
         {esStaff ? (
           <>
-            {tabEfectiva === "perfiles" && perfil.role === "administrador" && <PerfilesPanel />}
+            {tabEfectiva === "perfiles" &&
+              (perfil.role === "administrador" || perfil.role === "coordinador") && (
+                <PerfilesPanel puedeCrearUsuarios={perfil.role === "administrador"} />
+              )}
             {tabEfectiva === "asignacion" &&
               (perfil.role === "administrador" || perfil.role === "coordinador") && (
                 <AsignacionPanel />
