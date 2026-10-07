@@ -2717,7 +2717,14 @@ def listar_avances_diarios_admin(
     return obtener_vista_trabajos_por_fecha(fecha_obj, solo_programados=True)
 
 
+# El rango "todos los lideres" sigue iterando dia por dia (recalcula el
+# estado de toda la empresa en cada uno), asi que se mantiene acotado. El
+# rango "un solo lider" usa la ruta rapida de _filas_export_rango_lider
+# (una tanda de consultas para todo el rango, sin importar cuantos dias
+# abarque): su tope es mucho mas alto porque el costo real depende de
+# cuanto reporto ESE lider, no de la cantidad de dias del calendario.
 MAX_DIAS_EXPORTACION_DAILY = 31
+MAX_DIAS_EXPORTACION_LIDER = 366
 
 
 def _sanear_nombre_archivo(texto: str) -> str:
@@ -2726,16 +2733,236 @@ def _sanear_nombre_archivo(texto: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", texto).strip("_") or "export"
 
 
+def _filas_export_rango_lider(desde_obj: date, hasta_obj: date, lider_id: str) -> list[list]:
+    """Igual que el loop dia-por-dia de _filas_export_rango, pero para un
+    solo lider: en vez de recalcular el estado de TODA la empresa una vez
+    por cada dia del rango (lo que hacia que exportar un mes completo de
+    un lider se demorara tanto que el servidor cortaba la peticion por
+    tiempo), trae una sola vez la programacion, los trabajos y el
+    historial de avances de ESE lider para todo el rango, y arma las
+    filas en memoria."""
+    try:
+        perfil_resp = (
+            supabase.table("profiles")
+            .select("nombre_completo, email")
+            .eq("id", lider_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception:
+        perfil_resp = None
+    perfil_lider = perfil_resp.data if perfil_resp else None
+    nombre_lider = (
+        (perfil_lider or {}).get("nombre_completo") or (perfil_lider or {}).get("email") or "—"
+    )
+
+    try:
+        programacion_resp = (
+            supabase.table("programacion")
+            .select("trabajo_id, fecha")
+            .eq("lider_id", lider_id)
+            .gte("fecha", desde_obj.isoformat())
+            .lte("fecha", hasta_obj.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener la programacion del lider.",
+        ) from exc
+
+    fechas_por_trabajo: dict[str, list[date]] = {}
+    for fila in programacion_resp.data or []:
+        fechas_por_trabajo.setdefault(fila["trabajo_id"], []).append(
+            date.fromisoformat(fila["fecha"])
+        )
+    if not fechas_por_trabajo:
+        return []
+
+    trabajo_ids = list(fechas_por_trabajo.keys())
+    fin_rango = datetime.combine(hasta_obj, datetime.min.time(), tzinfo=ZONA_COLOMBIA) + timedelta(
+        days=1
+    )
+
+    try:
+        trabajos_resp = (
+            supabase.table("trabajos")
+            .select(
+                "id, site, zona, estado, created_at, "
+                "actividades(id, actividad, hw_actividad, qty, activo)"
+            )
+            .in_("id", trabajo_ids)
+            .execute()
+        )
+        historial_resp = (
+            supabase.table("trabajos_historial_estado")
+            .select("trabajo_id, estado, created_at")
+            .in_("trabajo_id", trabajo_ids)
+            .lt("created_at", fin_rango.isoformat())
+            .order("created_at")
+            .execute()
+        )
+        avances_resp = (
+            supabase.table("avances_diarios")
+            .select(
+                "id, trabajo_id, comentario, created_at, "
+                "ofensor:catalogo_opciones!ofensor_id(valor), "
+                "tipo_trabajo:catalogo_opciones!tipo_trabajo_id(valor)"
+            )
+            .in_("trabajo_id", trabajo_ids)
+            .lt("created_at", fin_rango.isoformat())
+            .order("created_at")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener los trabajos/avances del lider.",
+        ) from exc
+
+    trabajos_por_id = {t["id"]: t for t in trabajos_resp.data or []}
+
+    avances = avances_resp.data or []
+    avance_ids = [a["id"] for a in avances]
+    detalles_por_avance: dict[str, list[dict]] = {}
+    if avance_ids:
+        try:
+            detalle_resp = (
+                supabase.table("avances_diarios_detalle")
+                .select("avance_diario_id, actividad_id, cantidad")
+                .in_("avance_diario_id", avance_ids)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al obtener el detalle de avances del lider.",
+            ) from exc
+        for d in detalle_resp.data or []:
+            detalles_por_avance.setdefault(d["avance_diario_id"], []).append(d)
+
+    avances_por_trabajo: dict[str, list[dict]] = {}
+    for a in avances:
+        avances_por_trabajo.setdefault(a["trabajo_id"], []).append(a)
+
+    historial_por_trabajo: dict[str, list[dict]] = {}
+    for h in historial_resp.data or []:
+        historial_por_trabajo.setdefault(h["trabajo_id"], []).append(h)
+
+    def estado_vigente(trabajo_id: str, fin_dia: datetime) -> str | None:
+        estado = trabajos_por_id.get(trabajo_id, {}).get("estado")
+        for h in historial_por_trabajo.get(trabajo_id, []):
+            if _parsear_timestamptz(h["created_at"]) < fin_dia:
+                estado = h["estado"]
+            else:
+                break
+        return estado
+
+    filas_hoja: list[list] = []
+    for trabajo_id, fechas in fechas_por_trabajo.items():
+        trabajo = trabajos_por_id.get(trabajo_id)
+        if not trabajo:
+            continue
+        actividades = trabajo.get("actividades") or []
+        hw_por_actividad = {
+            act["id"]: act.get("hw_actividad") or act.get("actividad") or "—" for act in actividades
+        }
+
+        for fecha_obj in fechas:
+            inicio = datetime.combine(fecha_obj, datetime.min.time(), tzinfo=ZONA_COLOMBIA)
+            fin = inicio + timedelta(days=1)
+
+            creado_trabajo = trabajo.get("created_at")
+            if creado_trabajo and _parsear_timestamptz(creado_trabajo) >= fin:
+                continue
+            if estado_vigente(trabajo_id, fin) != "asignado":
+                continue
+
+            avances_hasta_fecha = [
+                a
+                for a in avances_por_trabajo.get(trabajo_id, [])
+                if _parsear_timestamptz(a["created_at"]) < fin
+            ]
+            avances_del_dia = [
+                a for a in avances_hasta_fecha if _parsear_timestamptz(a["created_at"]) >= inicio
+            ]
+
+            cantidad_por_actividad: dict[str, int] = {}
+            for a in avances_hasta_fecha:
+                for d in detalles_por_avance.get(a["id"], []):
+                    cantidad_por_actividad[d["actividad_id"]] = (
+                        cantidad_por_actividad.get(d["actividad_id"], 0) + d["cantidad"]
+                    )
+            cantidad_dia_por_actividad: dict[str, int] = {}
+            for a in avances_del_dia:
+                for d in detalles_por_avance.get(a["id"], []):
+                    cantidad_dia_por_actividad[d["actividad_id"]] = (
+                        cantidad_dia_por_actividad.get(d["actividad_id"], 0) + d["cantidad"]
+                    )
+
+            qty_total = 0.0
+            acumulado_total = 0.0
+            for act in actividades:
+                if not act.get("activo", True):
+                    continue
+                try:
+                    qty_act = float(act["qty"])
+                except (TypeError, ValueError):
+                    continue
+                qty_total += qty_act
+                acumulado_total += min(cantidad_por_actividad.get(act["id"], 0), qty_act)
+            porcentaje = round((acumulado_total / qty_total) * 100) if qty_total > 0 else None
+
+            detalle_texto = " · ".join(
+                f"{hw_por_actividad.get(aid, '—')}: {cantidad}"
+                for aid, cantidad in cantidad_dia_por_actividad.items()
+            )
+            comentarios_dia = [a["comentario"] for a in avances_del_dia if a.get("comentario")]
+            tipos_trabajo_dia = list(
+                dict.fromkeys(
+                    (a.get("tipo_trabajo") or {}).get("valor")
+                    for a in avances_del_dia
+                    if (a.get("tipo_trabajo") or {}).get("valor")
+                )
+            )
+            ofensores_dia = list(
+                dict.fromkeys(
+                    (a.get("ofensor") or {}).get("valor")
+                    for a in avances_del_dia
+                    if (a.get("ofensor") or {}).get("valor")
+                )
+            )
+
+            filas_hoja.append(
+                [
+                    fecha_obj.isoformat(),
+                    trabajo["site"],
+                    trabajo["zona"],
+                    nombre_lider,
+                    "Actualizado" if avances_del_dia else "Sin actualizar",
+                    porcentaje,
+                    " | ".join(tipos_trabajo_dia) if tipos_trabajo_dia else "—",
+                    " | ".join(ofensores_dia) if ofensores_dia else "—",
+                    detalle_texto,
+                    " | ".join(comentarios_dia),
+                ]
+            )
+
+    return filas_hoja
+
+
 def _filas_export_rango(desde_obj: date, hasta_obj: date, lider_id: str | None) -> list[list]:
     """Una fila por trabajo programado en cada dia del rango (mismo
     criterio que el Daily en pantalla), mas una fila por cada lider
     marcado como no disponible ese dia. Si se indica lider_id, se
     descartan las filas de cualquier otro lider (tanto trabajos como no
     disponibles), para exportar solo lo de ese lider en el rango."""
-    if (hasta_obj - desde_obj).days + 1 > MAX_DIAS_EXPORTACION_DAILY:
+    dias_solicitados = (hasta_obj - desde_obj).days + 1
+    tope = MAX_DIAS_EXPORTACION_LIDER if lider_id else MAX_DIAS_EXPORTACION_DAILY
+    if dias_solicitados > tope:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El rango maximo para exportar es de {MAX_DIAS_EXPORTACION_DAILY} dias.",
+            detail=f"El rango maximo para exportar es de {tope} dias.",
         )
 
     try:
@@ -2765,31 +2992,38 @@ def _filas_export_rango(desde_obj: date, hasta_obj: date, lider_id: str | None) 
         )
 
     filas_hoja: list[list] = []
-    fecha_actual = desde_obj
-    while fecha_actual <= hasta_obj:
-        fecha_iso = fecha_actual.isoformat()
-        for fila in obtener_vista_trabajos_por_fecha(fecha_actual, solo_programados=True):
-            if lider_id and fila["lider_id"] != lider_id:
-                continue
-            detalle = " · ".join(
-                f"{d['hw_actividad'] or d['actividad'] or '—'}: {d['cantidad']}"
-                for d in fila["detalle"]
-            )
-            filas_hoja.append(
-                [
-                    fecha_iso,
-                    fila["site"],
-                    fila["zona"],
-                    fila["lider_nombre"] or fila["lider_email"] or "—",
-                    "Actualizado" if fila["actualizado"] else "Sin actualizar",
-                    fila["porcentaje_avance"],
-                    " | ".join(fila["tipos_trabajo"]) if fila["tipos_trabajo"] else "—",
-                    " | ".join(fila["ofensores"]) if fila["ofensores"] else "—",
-                    detalle,
-                    " | ".join(fila["comentarios"]),
-                ]
-            )
-        for no_disponible in no_disponibles_por_fecha.get(fecha_iso, []):
+
+    if lider_id:
+        # Ruta rapida: una sola tanda de consultas para todo el rango, en
+        # vez de recalcular el estado de toda la empresa dia por dia.
+        filas_hoja.extend(_filas_export_rango_lider(desde_obj, hasta_obj, lider_id))
+    else:
+        fecha_actual = desde_obj
+        while fecha_actual <= hasta_obj:
+            fecha_iso = fecha_actual.isoformat()
+            for fila in obtener_vista_trabajos_por_fecha(fecha_actual, solo_programados=True):
+                detalle = " · ".join(
+                    f"{d['hw_actividad'] or d['actividad'] or '—'}: {d['cantidad']}"
+                    for d in fila["detalle"]
+                )
+                filas_hoja.append(
+                    [
+                        fecha_iso,
+                        fila["site"],
+                        fila["zona"],
+                        fila["lider_nombre"] or fila["lider_email"] or "—",
+                        "Actualizado" if fila["actualizado"] else "Sin actualizar",
+                        fila["porcentaje_avance"],
+                        " | ".join(fila["tipos_trabajo"]) if fila["tipos_trabajo"] else "—",
+                        " | ".join(fila["ofensores"]) if fila["ofensores"] else "—",
+                        detalle,
+                        " | ".join(fila["comentarios"]),
+                    ]
+                )
+            fecha_actual += timedelta(days=1)
+
+    for fecha_iso, no_disponibles in no_disponibles_por_fecha.items():
+        for no_disponible in no_disponibles:
             filas_hoja.append(
                 [
                     fecha_iso,
@@ -2804,8 +3038,11 @@ def _filas_export_rango(desde_obj: date, hasta_obj: date, lider_id: str | None) 
                     no_disponible["motivo"] or "—",
                 ]
             )
-        fecha_actual += timedelta(days=1)
 
+    # Orden cronologico: el sort es estable, asi que para una misma fecha
+    # las filas de trabajos (agregadas primero) quedan antes que las de
+    # no disponible, igual que el orden que tenia el loop dia-por-dia.
+    filas_hoja.sort(key=lambda f: f[0])
     return filas_hoja
 
 
