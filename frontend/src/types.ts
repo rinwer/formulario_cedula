@@ -139,3 +139,8 @@ export type SiteLigero = {
   zona: string;
 };
 
+export type DiaSinPlanear = {
+  fecha: string;
+  lideres: string[];
+};
+

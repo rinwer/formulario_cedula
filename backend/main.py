@@ -212,6 +212,11 @@ class LiderOut(BaseModel):
     activo: bool = True
 
 
+class DiaSinPlanearOut(BaseModel):
+    fecha: str
+    lideres: list[str]
+
+
 class SiteOut(BaseModel):
     id: str
     site: str
@@ -710,6 +715,80 @@ def listar_lideres(
         ) from exc
 
     return response.data or []
+
+
+@app.get(
+    "/api/admin/programacion/sin-planear-recientes",
+    response_model=list[DiaSinPlanearOut],
+)
+def listar_dias_sin_planear_recientes(
+    dias: int = Query(default=7, ge=1, le=31),
+    _admin: UsuarioActual = Depends(requerir_staff),
+) -> list[dict]:
+    """Para cada uno de los ultimos `dias` dias (incluido hoy), que
+    lideres_cuadrilla ACTIVOS no quedaron ni con un site programado ni
+    marcados 'no disponible' ese dia. Solo devuelve los dias que de verdad
+    tienen algun hueco, para que un fin de semana que el coordinador
+    olvido planear no se pierda solo porque nadie volvio a abrir
+    Programacion para esa fecha ya pasada."""
+    hoy = datetime.now(ZONA_COLOMBIA).date()
+    desde = hoy - timedelta(days=dias - 1)
+
+    try:
+        lideres_resp = (
+            supabase.table("profiles")
+            .select("id, nombre_completo, created_at")
+            .eq("role", "lider_cuadrilla")
+            .eq("activo", True)
+            .execute()
+        )
+        programacion_resp = (
+            supabase.table("programacion")
+            .select("lider_id, fecha")
+            .gte("fecha", desde.isoformat())
+            .lte("fecha", hoy.isoformat())
+            .execute()
+        )
+        disponibilidad_resp = (
+            supabase.table("disponibilidad")
+            .select("lider_id, fecha")
+            .gte("fecha", desde.isoformat())
+            .lte("fecha", hoy.isoformat())
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al revisar la planeacion reciente.",
+        ) from exc
+
+    lideres = lideres_resp.data or []
+
+    planeados_por_fecha: dict[str, set[str]] = {}
+    for fila in programacion_resp.data or []:
+        planeados_por_fecha.setdefault(fila["fecha"], set()).add(fila["lider_id"])
+    for fila in disponibilidad_resp.data or []:
+        planeados_por_fecha.setdefault(fila["fecha"], set()).add(fila["lider_id"])
+
+    resultado: list[dict] = []
+    fecha_actual = desde
+    while fecha_actual <= hoy:
+        fecha_iso = fecha_actual.isoformat()
+        planeados = planeados_por_fecha.get(fecha_iso, set())
+        sin_planear = []
+        for lider in lideres:
+            creado = lider.get("created_at")
+            # Un lider que todavia no existia ese dia no cuenta como "sin
+            # planear": no se le podia programar nada antes de darlo de alta.
+            if creado and _parsear_timestamptz(creado).astimezone(ZONA_COLOMBIA).date() > fecha_actual:
+                continue
+            if lider["id"] not in planeados:
+                sin_planear.append(lider["nombre_completo"])
+        if sin_planear:
+            resultado.append({"fecha": fecha_iso, "lideres": sin_planear})
+        fecha_actual += timedelta(days=1)
+
+    return resultado
 
 
 @app.get("/api/admin/sites", response_model=list[SiteOut])

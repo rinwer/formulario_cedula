@@ -465,6 +465,14 @@ export default function ProgramacionPanel() {
     (id) => !idsHabilitados.has(id)
   );
 
+  // Un lider activo sin sites asignados Y sin marcar "no disponible" es
+  // un hueco en la planeacion de este dia (nadie dijo que trabaje ni que
+  // descanse): se resume arriba para que no haya que revisar tarjeta por
+  // tarjeta para notarlo.
+  const lideresSinPlanear = lideresHabilitados.filter(
+    (l) => !filasPorLider[l.id] && !noDisponibles.has(l.id)
+  );
+
   return (
     <div className="bg-white rounded-xl shadow-md p-5 sm:p-8">
       <div className="flex items-center justify-between mb-1">
@@ -505,6 +513,23 @@ export default function ProgramacionPanel() {
           {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
           {errorAsignacion && <p className="text-sm text-red-600 mb-4">{errorAsignacion}</p>}
           {mensajeCopiar && <p className="text-sm text-cobre-700 mb-4">{mensajeCopiar}</p>}
+
+          {!cargando && !error && filas.length > 0 && lideresHabilitados.length > 0 && (
+            <div
+              className={
+                "flex items-center gap-2 rounded-lg px-3 py-2 mb-4 text-sm font-medium " +
+                (lideresSinPlanear.length > 0
+                  ? "bg-amber-50 text-amber-800 border border-amber-200"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200")
+              }
+            >
+              {lideresSinPlanear.length > 0
+                ? `${lideresSinPlanear.length} de ${lideresHabilitados.length} lideres sin planear para este dia: ${lideresSinPlanear
+                    .map((l) => l.nombre_completo)
+                    .join(", ")}`
+                : `Todos los lideres (${lideresHabilitados.length}) estan planeados para este dia.`}
+            </div>
+          )}
 
           {!cargando && !error && filas.length === 0 && (
             <p className="text-sm text-slate-500">No hay trabajos activos para programar.</p>

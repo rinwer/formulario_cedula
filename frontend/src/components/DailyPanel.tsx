@@ -5,6 +5,7 @@ import {
   ActividadAdmin,
   AvanceDiarioAdmin,
   CatalogoOpcion,
+  DiaSinPlanear,
   Disponibilidad,
   LiderLigero,
   SiteLigero,
@@ -250,6 +251,12 @@ export default function DailyPanel() {
   const [catalogoOfensor, setCatalogoOfensor] = useState<CatalogoOpcion[]>([]);
   const [filaRetroactiva, setFilaRetroactiva] = useState<AvanceDiarioAdmin | null>(null);
 
+  // Solo se consulta cuando se esta viendo HOY: revisa ademas los ultimos
+  // 7 dias, para que un fin de semana que el coordinador nunca planeo no
+  // se pierda solo porque nadie volvio a abrir Programacion para esa
+  // fecha ya pasada.
+  const [diasSinPlanearRecientes, setDiasSinPlanearRecientes] = useState<DiaSinPlanear[]>([]);
+
   useEffect(() => {
     fetchAutenticado(`${API_URL}/api/admin/lideres`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
@@ -305,6 +312,14 @@ export default function DailyPanel() {
 
   useEffect(() => {
     cargar(fecha);
+    if (fecha === hoyIso()) {
+      fetchAutenticado(`${API_URL}/api/admin/programacion/sin-planear-recientes?dias=7`)
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data: DiaSinPlanear[]) => setDiasSinPlanearRecientes(data))
+        .catch(() => setDiasSinPlanearRecientes([]));
+    } else {
+      setDiasSinPlanearRecientes([]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
@@ -362,6 +377,19 @@ export default function DailyPanel() {
   });
 
   const pendientes = filas.filter((fila) => !fila.actualizado).length;
+
+  // Un lider activo sin ningun site asignado Y sin marcar "no disponible"
+  // ese dia es un hueco en la planeacion (nadie dijo que trabaje ni que
+  // descanse), igual que en Programacion.
+  const liderIdsConSiteEseDia = new Set(
+    filas.filter((f) => f.lider_id).map((f) => f.lider_id as string)
+  );
+  const liderIdsNoDisponiblesEseDia = new Set(noDisponibles.map((d) => d.lider_id));
+  const lideresSinPlanear = lideres.filter(
+    (l) =>
+      l.activo && !liderIdsConSiteEseDia.has(l.id) && !liderIdsNoDisponiblesEseDia.has(l.id)
+  );
+  const diasSinPlanearOtrosDias = diasSinPlanearRecientes.filter((d) => d.fecha !== fecha);
   // Solo se puede registrar retroactivamente un dia YA pasado: el de hoy
   // sigue siendo trabajo del lider, no algo para que el coordinador cubra.
   const esFechaPasada = fecha < hoyIso();
@@ -532,6 +560,49 @@ export default function DailyPanel() {
               {pendientes > 0
                 ? `${pendientes} de ${filas.length} sites sin actualizar hoy`
                 : `Todos los sites (${filas.length}) actualizaron hoy`}
+            </div>
+          )}
+
+          {!cargando && lideres.filter((l) => l.activo).length > 0 && (
+            <div
+              className={
+                "flex items-center gap-2 rounded-lg px-3 py-2 mb-4 text-sm font-medium " +
+                (lideresSinPlanear.length > 0
+                  ? "bg-amber-50 text-amber-800 border border-amber-200"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200")
+              }
+            >
+              {lideresSinPlanear.length > 0
+                ? `${lideresSinPlanear.length} de ${
+                    lideres.filter((l) => l.activo).length
+                  } lideres sin planear para este dia: ${lideresSinPlanear
+                    .map((l) => l.nombre_completo)
+                    .join(", ")}`
+                : `Todos los lideres (${
+                    lideres.filter((l) => l.activo).length
+                  }) estan planeados para este dia.`}
+            </div>
+          )}
+
+          {diasSinPlanearOtrosDias.length > 0 && (
+            <div className="rounded-lg px-3 py-2 mb-4 text-sm bg-red-50 text-red-800 border border-red-200">
+              <p className="font-medium mb-1">
+                Quedaron dias recientes sin planear a algun lider:
+              </p>
+              <ul className="space-y-0.5">
+                {diasSinPlanearOtrosDias.map((d) => (
+                  <li key={d.fecha}>
+                    <span className="capitalize">
+                      {new Date(`${d.fecha}T00:00:00`).toLocaleDateString("es-CO", {
+                        weekday: "long",
+                        day: "2-digit",
+                        month: "long",
+                      })}
+                    </span>
+                    : {d.lideres.join(", ")}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
