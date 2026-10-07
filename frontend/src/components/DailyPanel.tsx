@@ -452,11 +452,15 @@ export default function DailyPanel() {
                   className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cobre-500"
                 >
                   <option value="">Todos los lideres</option>
-                  {lideres
-                    .filter((l) => l.activo)
+                  {/* Incluye tambien a los deshabilitados: no ejecutan
+                      trabajos nuevos, pero su historial pasado sigue
+                      siendo valido para exportar. */}
+                  {[...lideres]
+                    .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo))
                     .map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.nombre_completo}
+                        {!l.activo ? " (deshabilitado)" : ""}
                       </option>
                     ))}
                 </select>
