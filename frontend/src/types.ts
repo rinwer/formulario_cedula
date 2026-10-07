@@ -139,8 +139,13 @@ export type SiteLigero = {
   zona: string;
 };
 
+export type LiderNombre = {
+  id: string;
+  nombre_completo: string;
+};
+
 export type DiaSinPlanear = {
   fecha: string;
-  lideres: string[];
+  lideres: LiderNombre[];
 };
 

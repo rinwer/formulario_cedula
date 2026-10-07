@@ -212,9 +212,14 @@ class LiderOut(BaseModel):
     activo: bool = True
 
 
+class LiderNombreOut(BaseModel):
+    id: str
+    nombre_completo: str
+
+
 class DiaSinPlanearOut(BaseModel):
     fecha: str
-    lideres: list[str]
+    lideres: list[LiderNombreOut]
 
 
 class SiteOut(BaseModel):
@@ -783,7 +788,7 @@ def listar_dias_sin_planear_recientes(
             if creado and _parsear_timestamptz(creado).astimezone(ZONA_COLOMBIA).date() > fecha_actual:
                 continue
             if lider["id"] not in planeados:
-                sin_planear.append(lider["nombre_completo"])
+                sin_planear.append({"id": lider["id"], "nombre_completo": lider["nombre_completo"]})
         if sin_planear:
             resultado.append({"fecha": fecha_iso, "lideres": sin_planear})
         fecha_actual += timedelta(days=1)
@@ -3744,6 +3749,61 @@ def marcar_no_disponible(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El lider ya tiene sites asignados ese dia. Quitalos antes de marcarlo como no disponible.",
+        )
+
+    try:
+        supabase.table("disponibilidad").upsert(
+            {
+                "lider_id": payload.lider_id,
+                "fecha": payload.fecha,
+                "motivo": payload.motivo,
+                "registrado_por": admin.id,
+            },
+            on_conflict="lider_id,fecha",
+        ).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al marcar la disponibilidad.",
+        ) from exc
+
+
+@app.put("/api/admin/disponibilidad-retroactiva", status_code=status.HTTP_204_NO_CONTENT)
+def marcar_no_disponible_retroactivo(
+    payload: DisponibilidadAsignar,
+    admin: UsuarioActual = Depends(requerir_staff),
+) -> None:
+    """Marca a un lider como no disponible en un dia YA PASADO que quedo
+    sin planear (sin site asignado ni 'no disponible'), tipicamente
+    cuando el coordinador confirma con el lider que ese dia no trabajo.
+    Al contrario de marcar_no_disponible (que es para planear hacia
+    adelante y exige hoy o futuro), aca se exige justo lo opuesto: una
+    fecha ya pasada."""
+    obtener_perfil_lider(payload.lider_id)
+    fecha_obj = date.fromisoformat(payload.fecha)
+    if fecha_obj >= datetime.now(ZONA_COLOMBIA).date():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta accion es solo para dias ya pasados; para hoy o el futuro usa Programacion.",
+        )
+
+    try:
+        sites_asignados = (
+            supabase.table("programacion")
+            .select("id")
+            .eq("lider_id", payload.lider_id)
+            .eq("fecha", payload.fecha)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al validar los sites asignados.",
+        ) from exc
+    if sites_asignados.data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El lider ya tiene sites asignados ese dia.",
         )
 
     try:

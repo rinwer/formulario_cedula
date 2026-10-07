@@ -229,6 +229,197 @@ function ModalAvanceRetroactivo({
   );
 }
 
+type ModalResolverSinPlanearProps = {
+  liderId: string;
+  liderNombre: string;
+  fecha: string;
+  sites: SiteLigero[];
+  catalogoTipoTrabajo: CatalogoOpcion[];
+  catalogoOfensor: CatalogoOpcion[];
+  onCerrar: () => void;
+  onGuardado: () => void;
+};
+
+// Un lider sin planear ese dia no tiene ni site ni "no disponible", asi
+// que no hay ninguna fila existente sobre la que apoyar una accion (a
+// diferencia de ModalAvanceRetroactivo, que corrige un site que YA
+// estaba asignado). Este modal le pregunta al coordinador que paso ese
+// dia y, segun la respuesta, busca un site para registrar el avance
+// (reutilizando ModalAvanceRetroactivo) o marca al lider no disponible
+// con un motivo.
+function ModalResolverSinPlanear({
+  liderId,
+  liderNombre,
+  fecha,
+  sites,
+  catalogoTipoTrabajo,
+  catalogoOfensor,
+  onCerrar,
+  onGuardado,
+}: ModalResolverSinPlanearProps) {
+  const [modo, setModo] = useState<"elegir" | "trabajo" | "no_disponible">("elegir");
+  const [busquedaSite, setBusquedaSite] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+
+  const siteSeleccionado = sites.find(
+    (s) => s.site.trim().toLowerCase() === busquedaSite.trim().toLowerCase()
+  );
+
+  const fechaFormateada = new Date(`${fecha}T00:00:00`).toLocaleDateString("es-CO", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  if (modo === "trabajo" && siteSeleccionado) {
+    return (
+      <ModalAvanceRetroactivo
+        trabajoId={siteSeleccionado.id}
+        site={siteSeleccionado.site}
+        liderId={liderId}
+        liderNombre={liderNombre}
+        fecha={fecha}
+        catalogoTipoTrabajo={catalogoTipoTrabajo}
+        catalogoOfensor={catalogoOfensor}
+        onCerrar={onCerrar}
+        onGuardado={onGuardado}
+      />
+    );
+  }
+
+  const guardarNoDisponible = async () => {
+    setGuardando(true);
+    setMensaje(null);
+    try {
+      const res = await fetchAutenticado(`${API_URL}/api/admin/disponibilidad-retroactiva`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lider_id: liderId, fecha, motivo: motivo.trim() || null }),
+      });
+      if (res.status === 204) {
+        onGuardado();
+      } else {
+        const data = await res.json().catch(() => null);
+        setMensaje(data?.detail ?? "Ocurrio un error al guardar.");
+      }
+    } catch {
+      setMensaje("No se pudo conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-20">
+      <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-5 sm:p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-semibold text-slate-800">{liderNombre}</h3>
+          <button
+            onClick={onCerrar}
+            aria-label="Cerrar"
+            className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-4 capitalize">{fechaFormateada}</p>
+
+        {modo === "elegir" && (
+          <>
+            <p className="text-sm text-slate-600 mb-4">
+              Este lider no quedo planeado ese dia (sin site asignado ni "no disponible").
+              ¿Que paso?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setModo("trabajo")}
+                className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 font-medium px-4 py-2 rounded-md transition-colors"
+              >
+                Si trabajo, en un site
+              </button>
+              <button
+                onClick={() => setModo("no_disponible")}
+                className="text-sm text-slate-700 bg-slate-100 hover:bg-slate-200 font-medium px-4 py-2 rounded-md transition-colors"
+              >
+                No trabajo (descanso, incapacidad, etc.)
+              </button>
+            </div>
+          </>
+        )}
+
+        {modo === "trabajo" && (
+          <>
+            <label htmlFor="sin-planear-site" className="block text-sm font-medium text-slate-700 mb-1">
+              Site
+            </label>
+            <input
+              id="sin-planear-site"
+              type="text"
+              list="sites-resolver-sin-planear"
+              value={busquedaSite}
+              onChange={(e) => setBusquedaSite(e.target.value)}
+              placeholder="Buscar site por nombre..."
+              autoFocus
+              className="w-full rounded-md border border-slate-300 px-3 py-2 mb-1 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+            />
+            <datalist id="sites-resolver-sin-planear">
+              {sites.map((s) => (
+                <option key={s.id} value={s.site} />
+              ))}
+            </datalist>
+            {busquedaSite && !siteSeleccionado && (
+              <p className="text-xs text-amber-700 mb-3">Elige un site de la lista.</p>
+            )}
+            <button
+              onClick={() => setModo("elegir")}
+              className="text-sm text-slate-500 hover:text-slate-700 mt-3"
+            >
+              ← Volver
+            </button>
+          </>
+        )}
+
+        {modo === "no_disponible" && (
+          <>
+            <label htmlFor="sin-planear-motivo" className="block text-sm font-medium text-slate-700 mb-1">
+              Motivo (opcional)
+            </label>
+            <input
+              id="sin-planear-motivo"
+              type="text"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Vacaciones, incapacidad, etc."
+              autoFocus
+              className="w-full rounded-md border border-slate-300 px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-cobre-500"
+            />
+            {mensaje && <p className="text-sm text-red-600 mb-3">{mensaje}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={guardarNoDisponible}
+                disabled={guardando}
+                className="text-sm text-white bg-cobre-600 hover:bg-cobre-700 disabled:bg-cobre-300 font-medium px-4 py-2 rounded-md transition-colors"
+              >
+                {guardando ? "Guardando..." : "Guardar"}
+              </button>
+              <button
+                onClick={() => setModo("elegir")}
+                disabled={guardando}
+                className="text-sm text-slate-600 hover:text-slate-800 px-4 py-2 rounded-md"
+              >
+                ← Volver
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DailyPanel() {
   const [fecha, setFecha] = useState(hoyIso());
   const [filas, setFilas] = useState<AvanceDiarioAdmin[]>([]);
@@ -250,6 +441,11 @@ export default function DailyPanel() {
   const [catalogoTipoTrabajo, setCatalogoTipoTrabajo] = useState<CatalogoOpcion[]>([]);
   const [catalogoOfensor, setCatalogoOfensor] = useState<CatalogoOpcion[]>([]);
   const [filaRetroactiva, setFilaRetroactiva] = useState<AvanceDiarioAdmin | null>(null);
+  const [liderSinPlanear, setLiderSinPlanear] = useState<{
+    liderId: string;
+    liderNombre: string;
+    fecha: string;
+  } | null>(null);
 
   // Solo se consulta cuando se esta viendo HOY: revisa ademas los ultimos
   // 7 dias, para que un fin de semana que el coordinador nunca planeo no
@@ -310,13 +506,23 @@ export default function DailyPanel() {
     }
   };
 
+  const cargarDiasSinPlanearRecientes = async () => {
+    try {
+      const res = await fetchAutenticado(
+        `${API_URL}/api/admin/programacion/sin-planear-recientes?dias=7`
+      );
+      if (!res.ok) throw new Error();
+      const data: DiaSinPlanear[] = await res.json();
+      setDiasSinPlanearRecientes(data);
+    } catch {
+      setDiasSinPlanearRecientes([]);
+    }
+  };
+
   useEffect(() => {
     cargar(fecha);
     if (fecha === hoyIso()) {
-      fetchAutenticado(`${API_URL}/api/admin/programacion/sin-planear-recientes?dias=7`)
-        .then((res) => (res.ok ? res.json() : Promise.reject()))
-        .then((data: DiaSinPlanear[]) => setDiasSinPlanearRecientes(data))
-        .catch(() => setDiasSinPlanearRecientes([]));
+      cargarDiasSinPlanearRecientes();
     } else {
       setDiasSinPlanearRecientes([]);
     }
@@ -566,21 +772,42 @@ export default function DailyPanel() {
           {!cargando && lideres.filter((l) => l.activo).length > 0 && (
             <div
               className={
-                "flex items-center gap-2 rounded-lg px-3 py-2 mb-4 text-sm font-medium " +
+                "rounded-lg px-3 py-2 mb-4 text-sm font-medium " +
                 (lideresSinPlanear.length > 0
                   ? "bg-amber-50 text-amber-800 border border-amber-200"
-                  : "bg-emerald-50 text-emerald-700 border border-emerald-200")
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2")
               }
             >
-              {lideresSinPlanear.length > 0
-                ? `${lideresSinPlanear.length} de ${
-                    lideres.filter((l) => l.activo).length
-                  } lideres sin planear para este dia: ${lideresSinPlanear
-                    .map((l) => l.nombre_completo)
-                    .join(", ")}`
-                : `Todos los lideres (${
-                    lideres.filter((l) => l.activo).length
-                  }) estan planeados para este dia.`}
+              {lideresSinPlanear.length > 0 ? (
+                <span>
+                  {lideresSinPlanear.length} de {lideres.filter((l) => l.activo).length} lideres
+                  sin planear para este dia:{" "}
+                  {lideresSinPlanear.map((l, i) => (
+                    <span key={l.id}>
+                      {i > 0 && ", "}
+                      {esFechaPasada ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLiderSinPlanear({
+                              liderId: l.id,
+                              liderNombre: l.nombre_completo,
+                              fecha,
+                            })
+                          }
+                          className="underline hover:text-amber-900 font-medium"
+                        >
+                          {l.nombre_completo}
+                        </button>
+                      ) : (
+                        l.nombre_completo
+                      )}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                `Todos los lideres (${lideres.filter((l) => l.activo).length}) estan planeados para este dia.`
+              )}
             </div>
           )}
 
@@ -599,7 +826,25 @@ export default function DailyPanel() {
                         month: "long",
                       })}
                     </span>
-                    : {d.lideres.join(", ")}
+                    :{" "}
+                    {d.lideres.map((l, i) => (
+                      <span key={l.id}>
+                        {i > 0 && ", "}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLiderSinPlanear({
+                              liderId: l.id,
+                              liderNombre: l.nombre_completo,
+                              fecha: d.fecha,
+                            })
+                          }
+                          className="underline hover:text-red-900 font-medium"
+                        >
+                          {l.nombre_completo}
+                        </button>
+                      </span>
+                    ))}
                   </li>
                 ))}
               </ul>
@@ -835,6 +1080,23 @@ export default function DailyPanel() {
           onGuardado={() => {
             setFilaRetroactiva(null);
             cargar(fecha);
+          }}
+        />
+      )}
+
+      {liderSinPlanear && (
+        <ModalResolverSinPlanear
+          liderId={liderSinPlanear.liderId}
+          liderNombre={liderSinPlanear.liderNombre}
+          fecha={liderSinPlanear.fecha}
+          sites={sites}
+          catalogoTipoTrabajo={catalogoTipoTrabajo}
+          catalogoOfensor={catalogoOfensor}
+          onCerrar={() => setLiderSinPlanear(null)}
+          onGuardado={() => {
+            setLiderSinPlanear(null);
+            cargar(fecha);
+            cargarDiasSinPlanearRecientes();
           }}
         />
       )}
